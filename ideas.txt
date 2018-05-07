@@ -1,0 +1,17 @@
+- strategic interaction
+    - (strategic) game
+- dynamic pricing
+
+
+- POMDP
+    probleem:
+        'searching for randomly moving target' tracking of randomly moving target POMDP
+        Je hebt een aantal nodes in een netwerk. Met bepaalde overgangskansen beweegt een doelwit zich. Kan af en toe zelf kijken. Krijgt om de zoveel tijd een nieuw beeld/nieuwe informatie. Of meerdere personen, maar je krijgt observatie hoeveel personen, niet welke personen bijvoorbeeld.
+        Learning: je weet de overgangskansen niet -> gaat observeren om overgangskansen te leren -> sneller vinden. 
+        2 verschillende problemen:
+            - optimaal de overgangskansen leren
+            - optimaal/zsm het doelwit vangen
+            
+        todo:
+            literatuuronderzoek
+            model opstellen
