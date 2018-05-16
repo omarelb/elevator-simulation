@@ -4,15 +4,31 @@ import numpy.random as rnd
 from abc import ABC, abstractmethod
 from sortedcontainers import SortedList
 
-from environment import Passenger
+import constants as const
+
+from environment import Building, Floor, Elevator, Passenger
 
 
 class Simulator():
+    TIME_STEP = 0.01 # in seconds
+
     def __init__(self):
         self.time = 0
+        # could also be implemented as priority queue
         self.events = SortedList()
         self.seed = 42
         rnd.seed(self.seed)
+
+        # TODO: parameterize this
+        self.building = Building(4, 1, [1, 2, 3, 4])
+        
+        self.max_time = 100 # seconds
+
+
+    def initialize_simulation(self):
+        for floor in self.building.get_floors():
+            PassengerSchedulerEvent(self.get_time(), floor).execute(self)
+
 
     def insert(self, event):
         self.events.add(event)
@@ -26,8 +42,54 @@ class Simulator():
             first_event = self.events.pop(0)
             first_event.execute(self)
 
+
     def get_events(self):
         return self.events
+
+    
+    def get_time(self):
+        return self.time
+
+
+    def step(self):
+        self.time = self.time + Simulator.TIME_STEP
+
+
+    def observe(self):
+        pass
+    
+
+    def update(self):
+        # event happened
+        try:
+            if self.get_time() >= self.get_events()[0].get_time():
+                # handle event
+                event = self.get_events().pop(0)
+                event.execute(self)
+
+                print(self.get_events())
+        # no events in queue yet
+        except IndexError:
+            pass
+
+
+    def run(self):
+        self.initialize_simulation()
+
+        running = True
+        while running:
+            if round(self.get_time(), 5) % 1 == 0:
+                print('{} seconds passed'.format(round(self.get_time(), 3)))
+                print(self.get_events())
+            # main loop
+            self.step()
+            self.update()
+
+            # running=False
+            # if self.get_time() > 0:
+            if self.get_time() > self.max_time:
+            # if self.get_time() > self.max_time:
+                running = False
 
 
 # abstract base class
@@ -50,30 +112,60 @@ class Event(ABC):
 
 
 class PassengerArrivalEvent(Event):
-    def __init__(self, time, passenger):
+    """
+    Passenger arrives at floor
+    """
+    def __init__(self, time, floor):
         super().__init__(time)
-        self.passenger = passenger
+        self.floor = floor
 
     def execute(self, simulator):
-        simulator.get_events().add(self)
+        # print(self.floor)
+        # adds passenger to floor and sets passenger.floor to self.floor
+        # print('\nexecuting arrival')
+        # print(simulator.get_time())
+        # print(self.get_floor())
+        self.floor.add_passenger(Passenger())
+        # print(self.get_floor())
+        new_time = self.get_time() + 2 * Simulator.TIME_STEP
+        # print(new_time)
         # after arrival of a passenger, new passenger arrival gets scheduled for same floor
-        simulator.get_events().add(PassengerSchedulerEvent(self.get_time(), self.get_passenger()))
+        simulator.get_events().add(PassengerSchedulerEvent(new_time, self.get_floor()))
+        # print(simulator.get_events())
 
-    def get_passenger(self):
-        return self.passenger        
+        # exit()
 
+
+    def get_floor(self):
+        return self.floor
+
+    
+    def __str__(self):
+        return 'Arrival time: {}, Floor: {}'.format(self.time, self.floor)
+
+    def __repr__(self):
+        return 'Arrival time: {}, Floor: {}'.format(self.time, self.floor)
 
 class PassengerSchedulerEvent(Event):
-    def __init__(self, time, prev_passenger):
+    def __init__(self, time, floor):
         super().__init__(time)
         # self.prev_passenger = passenger
-        self.new_passenger = Passenger(passenger.get_floor())
+        self.floor = floor
+
     
-    def execute(self):
-        rate = self.new_passenger.get_floor().get_rate()
+    def execute(self, simulator):
+        rate = self.floor.get_arrival_rate()
         # arrival according to poisson(rate) process, where rate differs per floor
-        next_time = rnd.exponential(scale=1 / rate)
-        simulator.get_events().add(PassengerArrivalEvent(next_time, self.new_passenger))
+        # rate is expressed in minutes and value is then converted to number of seconds
+        next_time = rnd.exponential(scale=1 / rate) * const.SECONDS_PER_MINUTE
+        # TODO: randomize target floor
+        simulator.get_events().add(PassengerArrivalEvent(simulator.get_time() + next_time, self.floor))
+
+    def __str__(self):
+        return 'Schedule time: {}, Floor: {}'.format(self.time, self.floor)
+
+    def __repr__(self):
+        return 'Handletime: {}, Floor: {}'.format(self.time, self.floor)
 
 
 class HallCallEvent(Event):
@@ -98,10 +190,19 @@ class ElevatorArrivalEvent(Event):
         pass
 
 
+class ElevatorControlEvent(Event):
+    """
+    Get scheduled every set amount of time (or when state has changed?) -> ask controller for action
+    """
+    pass
+
+
 class EventHandler:
     pass
 
+
 sim = Simulator()
-pas = PassengerArrivalEvent(0)
-print(pas.get_time())
+sim.run()
+# pas = PassengerArrivalEvent(0)
+# print(pas.get_time())
 # print(x.events)

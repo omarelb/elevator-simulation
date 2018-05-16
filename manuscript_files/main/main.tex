@@ -5,9 +5,10 @@
 \usepackage{blindtext}
 \usepackage{amsmath,amsfonts,amssymb}
 \usepackage{parskip}
+\usepackage{color}
 % \usepackage{}
 
-\usepackage{times} %?
+\usepackage{times} % use times new roman font
 \usepackage[T1]{fontenc} %?
 \usepackage[pdftex]{graphicx}
 % for subgraphics
@@ -67,6 +68,10 @@
 
 \graphicspath{ {img/} }
 
+% \includeonly{chapters/introduction}
+% \includeonly{chapters/model}
+\includeonly{chapters/introduction, chapters/model}
+
 %%%%%%%%%%%%%%%% start document %%%%%%%%%%%
 \begin{document}
 
@@ -76,35 +81,34 @@
         \vspace*{1cm}
         
         \Huge
-        \textbf{Thesis Title}
+        \textbf{Optimizing Elevator Control with Reinforcement Learning}
         
         \vspace{0.5cm}
         \LARGE
-        Thesis Subtitle
+        DRAFT
         
         \vspace{1.5cm}
         
-        \textbf{Author Name}
+        \textbf{Omar Elbaghdadi}
         
         \vfill
         
         A thesis presented for the degree of\\
-        Doctor of Philosophy
+        Bachelor Econometrics and Operations Research
         
         \vspace{0.8cm}
         
         \includegraphics[width=0.7\textwidth]{LogoSBE.png}
-        
+
         \Large
-        Department Name\\
-        University Name\\
-        Country\\
-        Date
+        School of Business and Economics\\
+        Vrije Universiteit Amsterdam\\
+        The Netherlands\\
+        \today
         
     \end{center}
 \end{titlepage}
 
-\tableofcontents
 
 %%%%%%%%%%%%%%%%% abstract%%%%%%%%%%%%%%%%%%%
 
@@ -126,10 +130,29 @@
 \blindtext
 \newpage
 
-\section{Introduction}
+\tableofcontents
+\newpage
+% can use input or include
+
+% Introduction of the thesis
 \input{chapters/introduction}
 
+% Introduction to reinforcement learning
+\include{chapters/reinforcement_learning}
 
+% Model of the system
+\include{chapters/model}
+
+\include{chapters/algorithms}
+
+\include{chapters/results}
+
+\include{chapters/conclusion}
+
+\include{chapters/discussion}
+
+\bibliographystyle{plain}
+\bibliography{thesis}
 %\printbibliography
 
 \end{document}
