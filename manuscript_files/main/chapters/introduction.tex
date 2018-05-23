@@ -3,8 +3,20 @@
 (FACTCHECK)
 Life is hard to imagine without elevators nowadays. According to ??, the number of tall buildings constructed keeps increasing every year. Elevators, which play a vital role as a means of transportation in multi-storied buildings, and their service quality are thus becoming increasingly important. Elevator controllers handle passenger calls while trying to optimize service quality, e.g. by minimizing passenger waiting time.
 
-The core of classical and even state-of-the-art elevator control strategies are heuristics. Examples are [examples]. 
+The core of classical and even state-of-the-art elevator control strategies are human-designed heuristics. Examples are [examples]. 
 
-Heuristic control strategies are difficult and costly to design 
-Not only are they suboptimal, heuristic control strategies are also inflexible, due to their inability to deal with 
+Human-designed control policies perform sufficiently well most of the time, but they are difficult and costly to design. Not only are they suboptimal, heuristic control strategies are also inflexible, due to their inability to deal with traffic patterns that had been considered when designing the algorithm \cite{walczak2006}.
+
+To combat these weaknesses, several researchers have proposed the application of learning to elevator control. \textit{Reinforcement Learning} (RL) has been given an especially large amount of research in this \cite{crites_barto_1998, pepyne_97, walczak2006, yuan_2008, li_2015}. These researchers have shown that the application of RL improves optimality of the control policies compared to traditional heuristic policies. An especially realistic model was tested by \cite{walczak2006}. Instead of relying on a pre-designed strategy, RL algorithms learn an optimal control policy at running time. Oftentimes, the elevator system is very complex and hard to model. The advantage with RL methods is that it is okay not to know all the dynamics of the environment. It is possible to apply \textit{model-free learning} in that case \cite{sutton_barto_2012}. It is therefore possible to apply the methods without knowing about any of the traffic patterns in advance. To some extent, it is also possible to keep adapting the policy in the face of changing traffic patterns.
+
+The elevator control problem is interesting for serving as a benchmark to RL algorithms as well, since rewards encoding applicable system performances are easily obtained. Furthermore, we are able to test how well the algorithms behave when dealing with a stochastic environment.   
+
+
+% There is a need to distinguish single- and multiple-elevator systems. There are multiple ways to model a multiple-elevator system. It is possible either to regard each elevator as an autonomous agent, each with its own control policy to optimize, or to regard the group of elevators as a single system. 
+
+
+%success of the methods, multi-elevator systems,
+
+
+
 % An increase in elevator efficiency can have several advantages: saving time, increasing productivity, and increasing passenger satisfaction. 
