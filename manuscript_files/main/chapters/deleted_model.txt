@@ -1,0 +1,41 @@
+% ---------------------------------------
+% DISCRETE FORMULATION OF MODEL -> REPLACED BY PARTIAL DISCRETE FORMULATION
+Let $N$ be the number of floors in the building, including the ground floor.
+
+A state $s$ is defined by several variables:
+
+\[
+% s = \begin{bmatrix} c, & w, & p, & o, & d \end{bmatrix}^\top
+s = \begin{bmatrix} c, & p, & o, & d \end{bmatrix}^\top
+    % s = [c,\ p,\ o,\ d]^\top    
+\]
+
+where
+
+\begin{itemize}
+    \item $c$ is an $N-1$ length vector indicating the number of people waiting at each floor excluding the ground floor. The entries of $c$ take values in \{0, 1, 2\}.
+    % \item $w$ is an $N - 1$ length vector indicating the mean waiting time of people on each floor. Since this is a continuous quantity, we discretize it into bins indicating short, medium and long waiting times. [0, ??) = low, [??, ??) = medium, [??, $\infty$) = high
+    \item $p \in \{0, 1, \dots, N-1\}$ indicates at which floor the elevator is locatesd.
+    \item $o \in \{0, 1, \dots, \text{elevator\_capacity}\}$ indicates how many passengers are occupying the elevator.
+    \item $d \in \{-1, 0, 1\}$ indicates the direction of the elevator. In ascending order, the values indicate a downward movement, no movement, and an upward movement respectively.
+\end{itemize}
+
+The cardinality of the state space is 
+\begin{align*}
+    &(\text{floor\_capacity} + 1)^{N - 1} \cdot N \cdot (\text{elevator\_capacity + 1}) \cdot \text{num\_directions}\\
+    & = 3 ^ {4} \cdot 5 \cdot 9 \cdot 3 = 10935
+\end{align*}
+
+which is a reasonably small size.
+
+---------------------------------
+REINFORCEMENT IN DISCRETE MODEL
+
+\[
+    r(s, a, s') = - \sum_{i=0}^{N-1} c_i    
+\]
+
+where $c_i$ is the $i$th element of $c$. $s'$ is the next state observed after taking action $a$ in state $s$. {\color{red} (MAKE NOTATION SECTION?)}. In other words,
+the reward is higher with less people in the system. {\color{red} (ADJUST REWARD TO TAKE INTO ACCOUNT WAITING TIME?)}. A reward $r_t$ at timestep $t$ is observed after taking an action in timestep $t - 1$. 
+
+% DISCRETIZATION OF WAITING TIME
