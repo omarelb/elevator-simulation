@@ -168,6 +168,11 @@ class PassengerSchedulerEvent(Event):
         return 'Handletime: {}, Floor: {}'.format(self.time, self.floor)
 
 
+class PassengerTransferEvent(Event):
+    pass
+
+
+
 class HallCallEvent(Event):
     def __init__(self):
         super().__init__()
@@ -195,6 +200,7 @@ class ElevatorControlEvent(Event):
     Get scheduled every set amount of time (or when state has changed?) -> ask controller for action
     """
     pass
+
 
 
 class EventHandler:
