@@ -1,0 +1,110 @@
+\section{The Algorithm}
+
+There are various methods and philosophies to solving Reinforcement Learning problems. The basic idea for most algorithms is to estimate reward values for states. These values are then used to make sure we take actions so that we stay in high-value states. $Q$ is a function that maps state-action pairs $(s, a)$ to a numerical value. This value represents the expected total discounted return after taking action $a$ in state $s$. These values are then used to approximate the optimal policy $\pi_*$.  
+
+\subsection{$Q$-learning}
+
+We use the Q-learning algorithm \cite{watkins_89}, which can be categorized as an off-policy Temporal Difference (TD) control method \cite{sutton_barto_2012}, where the Q-update is generally defined by
+\begin{align}
+    Q(s_t, a_t) &\leftarrow Q(s_t, a_t) + \alpha \left[ r_{t + 1} + \gamma \max\limits_a Q(s_{t + 1}, a) - Q(s_t, a_t) \right]\\
+    &= (1 - \alpha) Q(s_t, a_t) + \alpha \left[r_{t + 1} + \gamma \max\limits_a Q(s_{t+1}, a) \right]. \label{eq:q_update_discrete}
+\end{align}
+It is, in essence, a stochastic approximation to the Bellman Optimality equations.  %\ref{eq:bellman}
+The advantage of this method is that we do not need to fully specify a model of the environment. We do not need to know, for instance, state transition probabilities and the distribution of reinforcements. These can be difficult to specify in an environment as complex as the elevator system. Instead, we use a simulator to generate episodes.
+
+Q-learning is an off-policy method, because it does not necessarily learn the same policy that is being followed. The learned action-value function, $Q$, directly approximates the optimal action-value function $q_*$, independent of the policy being followed. The policy being followed still determines which state-action pairs visited and updated. However, all that is required for correct convergence is that all pairs continue to be updated. Under this assumption and a variant of the usual stochastic approximation conditions on the sequence
+of step-size parameters $\alpha_t$, $Q$ has been shown to converge to $q_*$ with probability 1.
+
+The $Q$-learning algorithm is given below.
+
+{\color{red} MAKE NICER, INCLUDE REFERENCE TO EARLIER FORMULA}
+\begin{center}
+    \begin{minipage}{12cm}
+    \begin{algorithm}[H]
+    \caption{Q-learning (off-policy TD control) for estimating $\pi \approx \pi_*$}
+    \begin{algorithmic}[1]
+    
+    \STATE Initialize $Q(s, a)$, for all $s \in S$, $a \in A(s)$, arbitrarily, and $Q(terminal-state, \cdot) = 0$
+    \REPEAT
+    \STATE Initialize $S$
+    \REPEAT
+    \STATE Choose $A$ from $S$ using policy derived from $Q$ (e.g. $\epsilon$-greedy)
+    \STATE Take action $A$, observe $R$, $S'$
+    % \STATE Choose $A$ from $S$ using policy derived from $Q$ (e.g., $\epsilon$-greedy)
+    \STATE $Q(S, A) \leftarrow (1 - \alpha) Q(S, A) + \alpha \left[R + \gamma \max\limits_a Q(S', a) \right]$
+    \STATE $S \leftarrow S'$
+    \UNTIL ($S$ is terminal)
+    \UNTIL {episodes end}s
+    \end{algorithmic}
+    \end{algorithm}
+    \end{minipage}
+\end{center}
+
+\subsubsection{Function Updates}
+We need to modify Algorithm (??) to meet our requirements. We now minimize over costs instead of maximizing over rewards. Since we are acting in continuous time, it is necessary to change the $Q$ function update rule described in (\ref{eq:q_update_discrete}). For a time interval $[t_1, t_2]$ as considered above, the update rule for the $Q$-value for state $s_{t_1}$ and action $a_{t_1}$ is given at time $t_2$ by
+
+\begin{equation}
+    Q(s_{t_1}, a_{t_1}) \leftarrow     
+    (1 - \alpha) Q(s_{t_1}, a_{t_1}) + \alpha \left[r_{[t_1,t_2]} + e^{-\beta(t_2 - t_1)} \min\limits_a Q(s_{t_1}, a) \right] \label{eq:q_update_continuous}
+\end{equation}
+
+where the total discounted cost for time interval $[t_1, t_2]$, $r_{[t_1, t_2]}$, is given by
+
+\begin{equation}
+    \int_{t_1}^{t_2} e^{-\beta(\tau - t_1)} \sum_p(\tau - t_1 + w_p)^2 d\tau. \label{eq:cost_reinforcement_int}
+\end{equation}
+
+which can be solved by parts to yield
+
+\begin{equation}
+    \sum_p e^{-\beta w_p} \left[\frac{2}{\beta^3} + \frac{2w_p}{\beta^2} + \frac{w_p^2}{\beta}  \right] - e^{-\beta(w_p + t_2 - t_1)} \left[ \frac{2}{\beta^3} + \frac{2(w_p + t_2 - t_1)}{\beta^2} + \frac{(w_p + t_2 - t_1)^2}{\beta} \right]. \label{eq:cost_reinforcement_sum}
+\end{equation}
+
+\subsubsection{Calculating Omniscient Reinforcements}
+
+We have to be careful in doing the accounting of reinforcements.
+
+
+{\color{red} REPHRASE}
+
+In the omniscient reinforcement scheme, which we are using, accumulated cost for each car is updated after every passenger arrival event (when a passenger arrives at a floor), passenger transfer event (when a passenger gets on or off of a car), and car arrival event (when a control decision is made). The amount of cost accumulated between passenger arrival events is the same for all cars since they share the same objective function, but the amount of cost each car accumulates between its decisions is different since the cars make their decisions at different times. Therefore, each car $i$ has an associated storage location, $R[i]$, where the total discounted cost it has incurred since its last decision (at time $d[i]$) is accumulated. At the time of each event, the following computations are performed: Let $t_0$ be the time of the last event and $t_1$ the time of the current event. For each passenger $p$ that has been waiting between $t_0$ and $t_1$, let $w_0 (p)$ and $w_1(p)$ be the total time that passenger $p$ has waited at $t_0$ and $t_1$ respectively. Then for each car $i$,
+
+\begin{equation}
+   \Delta R[i] = \sum_p e^{-\beta (t_0 - d[i])} \left[\frac{2}{\beta^3} + \frac{2w_0(p)}{\beta^2} + \frac{w_0^2(p)}{\beta}  \right] - e^{-\beta(t_1 - d[i])} \left[ \frac{2}{\beta^3} + \frac{2w_1(p)}{\beta^2} + \frac{(w_1^2(p)}{\beta} \right]. \label{eq:cost_reinforcement_partial}
+\end{equation}
+
+\subsubsection{Making Decisions and Updating Q-Values}
+
+{\color{red} REPHRASE}
+A car moving between floors generates a car arrival event when it reaches the point at which it must decide whether to stop at the next floor or to continue past the next floor. In some cases, cars are constrained to take a particular action, for example, stopping at the next floor if a passenger wants to get off there. An agent faces a decision point only when it has an unconstrained choice of actions. The algorithm used by each agent for making decisions and updating its Q-value estimates is as follows:
+\begin{enumerate}
+    \item At time $t_1$ , observing state $s_{t_1}$, car $i$ arrives at a decision point. It selects an action $a$ using the Boltzmann distribution over its Q-value estimates:
+    \[
+        P(stop) = \frac{e^{Q(x,cont)/T}}{e^{Q(x,cont)/T} + e^{Q(x,stop)/T}}
+    \]
+    where $T$ is a positive “temperature” parameter that is “annealed” (decreased) during learning. The value of $T$ controls the amount of randomness in the selection of actions. At the beginning of learning, when the Q-value estimates are very inaccurate, high values of $T$ are used, which give nearly equal probabilities to each action. Later in learning, when the Q-value estimates are more accurate, lower values of $T$ are used, which give higher probabilities to actions that are thought to be superior, while still allowing some exploration to gather more information about the other actions. Choosing a slow enough annealing schedule is particularly
+    important in multi-agent settings.
+    
+    \item Let the next decision point for car $i$ be at time $t_2$ in state $s_{t_2}$. After all cars (including car $i$) have updated their $R[\cdot]$ values as described above, car $i$ adjusts its estimate of $Q(s_{t_1}, a)$ toward the following target value:
+
+    \[
+    R[i] + e^{-\beta(t_2 - t_1)} \min\limits_{\{stop, cont\}} Q(s_{t_2}, \cdot).    
+    \]
+
+    \item
+    Let $s_{t_1} \leftarrow s_{t_2}$ and $t_1 \leftarrow t_2$. Go to step 1.
+
+\end{enumerate}
+
+
+
+\subsection{Dynamic Programming}
+
+\subsection{Monte Carlo}
+
+\subsection{Temporal Difference}
+
+The basic idea is to 
+
+
+Inside the Reinforcement Learning paradigm, there are various 
