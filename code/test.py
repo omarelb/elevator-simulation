@@ -8,7 +8,7 @@ C = 0.8871057
 
 FLOOR_HEIGHT = 3.66
 
-step = 0.0001 # seconds
+step = 0.01 # seconds
 
 class Particle():
     def __init__(self, time=0, step=0.01, acc=0, vel=0, pos=0):

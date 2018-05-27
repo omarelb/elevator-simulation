@@ -7,6 +7,10 @@
 \usepackage{parskip}
 \usepackage{color}
 % \usepackage{}
+\usepackage[toc, page]{appendix}
+% \usepackage[mathcal]{euscript}
+\usepackage{mathtools}
+\usepackage{comment}
 
 \usepackage{times} % use times new roman font
 \usepackage[T1]{fontenc} %?
@@ -72,7 +76,13 @@
 % \includeonly{chapters/reinforcement_learning}
 % \includeonly{chapters/model}
 % \includeonly{chapters/algorithms}
-\includeonly{chapters/introduction, chapters/reinfocement_learning.tex, chapters/model, chapters/algorithms}
+\includeonly{chapters/introduction, chapters/reinforcement_learning, chapters/model, chapters/algorithms}
+
+\newcommand{\bigbar}{\ \Biggr\rvert\ }
+\newcommand{\cbar}{\ |\ }
+\newcommand{\E}{\mathbb{E}} % expectation
+\renewcommand{\S}{\mathcal{S}} % expectation
+    
 
 %%%%%%%%%%%%%%%% start document %%%%%%%%%%%
 \begin{document}
@@ -157,5 +167,12 @@
 \bibliographystyle{plain}
 \bibliography{thesis}
 %\printbibliography
+
+% \newpage
+% \begin{appendices}
+%     \input{chapters/appendix.tex}
+%     \chapter{Some Appendix}
+%     The contents...
+% \end{appendices}
 
 \end{document}

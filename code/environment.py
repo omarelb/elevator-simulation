@@ -21,6 +21,7 @@ class Environment:
     def __init__(self, num_floors, num_elevators, arrival_rates):
         self.num_floors = num_floors
         self.num_elevators = num_elevators
+        # initialize floors
         self.floors = [Floor(level, arrival_rates[level]) for level in range(self.num_floors)]
         self.elevators = []
         self.state = State.get_initial_state()
@@ -31,6 +32,45 @@ class Environment:
         Update environment state.
         """
         pass
+
+    def getCurrentState(self):
+        """
+        Returns the current state of enviornment
+        """
+        pass
+
+    def getPossibleActions(self, state):
+        """
+          Returns possible actions the agent
+          can take in the given state. Can
+          return the empty list if we are in
+          a terminal state.
+        """
+        pass
+
+    def doAction(self, action):
+        """
+          Performs the given action in the current
+          environment state and updates the enviornment.
+
+          Returns a (reward, nextState) pair
+        """
+        pass
+
+    def reset(self):
+        """
+          Resets the current state to the start state
+        """
+        pass
+
+    def isTerminal(self):
+        """
+          Has the enviornment entered a terminal
+          state? This means there are no successors
+        """
+        state = self.getCurrentState()
+        actions = self.getPossibleActions(state)
+        return len(actions) == 0
 
     def get_floors(self):
         return self.floors
@@ -45,12 +85,16 @@ class Environment:
 class Floor:
     def __init__(self, level, arrival_rate):
         self.level = level
+        self.pos = const.FLOOR_HEIGHT * self.level
         self.arrival_rate = arrival_rate
         self.queue = Queue(maxsize=0)
         self.num_waiting = 0
 
     def get_level(self):
         return self.level
+
+    def get_pos(self):
+        return self.pos
 
     def get_arrival_rate(self):
         return self.arrival_rate
@@ -73,7 +117,17 @@ class Floor:
         # qsize may not be reliable
         return self.num_waiting
 
+
+    def __lt__(self, other):
+        return self.level < other.level 
+
+    def __gt__(self, other):
+        return self.level > other.level 
     
+    def __eq__(self, other):
+        return self.level == other.level 
+
+
     def __str__(self):
         return '[Level: {}, num_waiting: {}]'.format(self.level, self.num_waiting)
 
@@ -120,50 +174,62 @@ class Passenger:
 
 
 class Elevator:
+    # elevator direction
     UP = 1
     DOWN = -1
     STOPPED = 0
 
-    IDLE = 'IDLE'
-    ACCELERATING = 'ACCELERATING'
-    DECELERATING = 'DECELERATING'
-    FULL_SPEED = 'FULL_SPEED'
+    # elevator status
+    IDLE = 2
+    ACCELERATING = 3
+    DECELERATING = 4
+    FULL_SPEED = 5
+ 
+    # elevator actions
+    STOP = 6
+    CONTINUE = 7
+    NO_ACTION = 8
 
-    def __init__(self):
-        self.controller = control.ReinforcementAgent()
-        self.floor = 0
-        self.direction = Elevator.STOPPED
-        self.current_action = 1
-        self.capacity = 20 
-        self.num_passengers = 0
-        self.action_in_progress = False
-        self.status = Elevator.IDLE
-        self.constrained = False
-        self.state = State()
-
+    def __init__(self, controller=control.ReinforcementAgent(), floor=0, direction=Elevator.STOPPED,
+                 current_action=Elevator.NO_ACTION, capacity=20, num_passengers=0, action_in_progress=False, 
+                 status=Elevator.IDLE, constrained=False, acc=0, vel=0, pos=0, history=None,
+                 decision_time=None, decision_made=False, acc_update=None):
+        self.controller = controller
+        self.floor = floor
+        self.direction = direction
+        self.current_action = current_action
+        self.capacity = capacity
+        self.num_passengers = num_passengers
+        self.action_in_progress = action_in_progress
+        self.status = status
+        # True if current elevator action was constrained
+        self.constrained = constrained
         # acceleration, velocity and position
         self.acc = acc
         self.vel = vel
         self.pos = pos
 
         # time, acc, vel, pos, action taken
-        self.history = []
-        self.decision_time = 0
-        self.decision_made = False
-        self.acc_update = self.dacc
+        self.history = history
+        self.decision_time = decision_time
+        self.decision_made = decision_made
+        self.acc_update = acc_update
 
-    def dacc(self, dt):
-        return np.cos(C * self.time) * dt * (self.time < ACCEL_TIME)
+    def dacc(self, time, dt):
+        """
+        Return the change in acceleration for a given timestep.
 
-    def dacc2(self):
+        Change in acceleration is approximated: da(t) approx a'(t)dt
+        """
+        # TODO: condition return depending on status (and position?)
+        return np.cos(const.ACCEL_CONST * time) * dt 
+
+    def dacc2(self, dt):
         # c = [3.36406177, -6.15411438, 0.84932998, 1.94148245]
-        c = [3.51757258, -6.4762952, 0.9575183, 1.94148245]
         x = self.time - self.decision_time
 
-        return (2 * c[0] * x + c[1]) * self.dt
+        return (2 * const.ACCEL_DECEL[0] * x + const.ACCEL_DECEL[1]) * dt
 
-    def acc_(self):
-        return np.sin(C * self.time) * (self.time < ACCEL_TIME)
 
     def dvel(self):
         return self.acc * self.dt
@@ -190,9 +256,6 @@ class Elevator:
         self.vel += self.dvel()
         self.pos += self.dpos()
 
-    def update(self):
-        pass
-
 
     def get_legal_actions(self, state):
         # TODO: modelling
@@ -205,7 +268,7 @@ class Elevator:
         return self.controller
 
     def get_floor(self):
-        return floor
+        return self.floor
 
     def get_direction(self):
         return self.direction
@@ -236,6 +299,9 @@ class Elevator:
 
     def get_position(self):
         return self.pos
+
+    def get_motion(self):
+        return (self.acc, self.vel, self.pos)
 
     def get_history(self):
         return self.history
@@ -326,8 +392,11 @@ class State:
     def get_direction(self):
         return self.floor
 
-    def set_initial_state(self):
-        pass
+
+    @staticmethod
+    def get_initial_state():
+        return (0, 0, 0, 0, 0, 0, Elevator.STOPPED)
+        
 
     def set_hall_up_higher(self, num_up_higher):
         self.hall_up_higher = num_up_higher
