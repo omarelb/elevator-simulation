@@ -9,6 +9,7 @@ import control
 # other modules
 import numpy as np
 import numpy.random as rnd
+from abc import ABC, abstractmethod
 from queue import Queue
 
 from time import time, sleep
@@ -17,14 +18,28 @@ from time import time, sleep
 class Environment:
     """
     Combines all separate parts of an environment.
+
+    Attributes
+    ----------
+    arrival_rates
+    traffic_profile
+    num_floors
+    num_elevators
+    floors
+    elevators
+    state
     """
-    def __init__(self, num_floors, num_elevators, arrival_rates):
+    def __init__(self, num_floors=5, num_elevators=1, traffic_profile='down_peak'):
+        if traffic_profile == 'down_peak':
+            self.traffic_profile = DownPeak(num_floors)
+        else:
+            self.traffic_profile = DownPeak(num_floors)
+        
         self.num_floors = num_floors
         self.num_elevators = num_elevators
         # initialize floors
-        self.floors = [Floor(level, arrival_rates[level]) for level in range(self.num_floors)]
+        self.floors = [Floor(level) for level in range(self.num_floors)]
         self.elevators = []
-        self.state = State.get_initial_state()
         # etc.
 
     def update(self):
@@ -33,13 +48,98 @@ class Environment:
         """
         pass
 
-    def getCurrentState(self):
+    def get_current_state(self):
         """
         Returns the current state of enviornment
         """
         pass
 
-    def getPossibleActions(self, state):
+
+    def get_learning_state(self, elevator_state):
+        """
+        Return the state used by a learning agent.
+
+        The learning state is mapped to an action by the learning agent.
+        It consists of, in the following order:
+            - the number of up hall calls above the elevator  
+            - the number of down hall calls above the elevator  
+            - the number of up hall calls below the elevator  
+            - the number of down hall calls below the elevator  
+            - the number of car calls in the current direction of the elevator  
+            - current position (floor) of the elevator
+            - current direction of the elevator
+
+        Parameters
+        ----------
+        elevator_state :
+            state of an elevator
+
+        Returns
+        -------
+        tuple
+            learning state of the elevator as defined above
+        """
+        es = elevator_state
+        return (self.num_hall_calls(es, down=True, above=True), self.num_hall_calls(es, down=False, above=True),
+                self.num_hall_calls(es, down=True, above=False), self.num_hall_calls(es, down=False, above=False),
+                elevator_state.num_car_calls(), elevator_state.floor, elevator_state.direction)
+
+
+    def get_buttons(self, down=False, up=False):
+        """
+        Return button state of all floors.
+
+        Parameters
+        ----------
+        down : bool
+            If true, return only down button state
+        up : bool
+            If true, return only up button state
+
+        Returns
+        -------
+        tuple
+            every element i contains the button state of floor i
+        """
+        all_buttons = tuple(floor.get_buttons() for floor in self.floors)
+
+        if down:
+            return tuple(buttons[0] for buttons in all_buttons)
+        if up:
+            return tuple(buttons[1] for buttons in all_buttons)
+
+        return all_buttons
+
+
+    def num_hall_calls(self, elevator_state, down=False, above=False):
+        """
+        Return number of hall calls relative to elevator position.
+
+        Parameters
+        ----------
+        elevator_state :
+            state of elevator
+        down : bool
+            If true, look at down hall calls, up hall calls otherwise 
+        above : bool
+            If true, look at hall calls above elevator, below otherwise
+        
+        Returns
+        -------
+        int
+            number of up/down hall calls above/below elevator 
+        """
+        current_floor = elevator_state.floor
+
+        buttons = self.get_buttons(down)
+
+        if above:
+            return sum(buttons[current_floor + 1:])
+        else:
+            return sum(buttons[:current_floor])
+
+
+    def get_possible_actions(self, state):
         """
           Returns possible actions the agent
           can take in the given state. Can
@@ -48,32 +148,36 @@ class Environment:
         """
         pass
 
-    def doAction(self, action):
+
+    def do_action(self, action):
         """
           Performs the given action in the current
           environment state and updates the enviornment.
 
-          Returns a (reward, nextState) pair
+          Returns a (reward, next_state) pair
         """
         pass
 
     def reset(self):
         """
-          Resets the current state to the start state
+          Resets the current state to the blank state
         """
-        pass
+        for elevator in self.elevators:
+            elevator.reset()
 
-    def isTerminal(self):
+        for floor in self.floors:
+            floor.reset()
+
+        
+    def is_terminal(self):
         """
           Has the enviornment entered a terminal
           state? This means there are no successors
         """
-        state = self.getCurrentState()
-        actions = self.getPossibleActions(state)
+        state = self.get_current_state()
+        actions = self.get_possible_actions(state)
         return len(actions) == 0
 
-    def get_floors(self):
-        return self.floors
 
     def __str__(self):
         pass
@@ -82,98 +186,7 @@ class Environment:
         pass
 
 
-class Floor:
-    def __init__(self, level, arrival_rate):
-        self.level = level
-        self.pos = const.FLOOR_HEIGHT * self.level
-        self.arrival_rate = arrival_rate
-        self.queue = Queue(maxsize=0)
-        self.num_waiting = 0
-
-    def get_level(self):
-        return self.level
-
-    def get_pos(self):
-        return self.pos
-
-    def get_arrival_rate(self):
-        return self.arrival_rate
-
-    def set_arrival_rate(self, rate):
-        self.arrival_rate = rate
-
-    def add_passenger(self, passenger):
-        self.queue.put(passenger)
-        passenger.set_floor(self)
-        self.num_waiting += 1
-
-
-    def remove_passenger(self, passenger):
-        self.queue.get()
-        self.num_waiting -= 1
-
-
-    def get_num_waiting(self):
-        # qsize may not be reliable
-        return self.num_waiting
-
-
-    def __lt__(self, other):
-        return self.level < other.level 
-
-    def __gt__(self, other):
-        return self.level > other.level 
-    
-    def __eq__(self, other):
-        return self.level == other.level 
-
-
-    def __str__(self):
-        return '[Level: {}, num_waiting: {}]'.format(self.level, self.num_waiting)
-
-    def __repr__(self):
-        return '[Level: {}, num_waiting: {}]'.format(self.level, self.queue)
-
-
-class Passenger:
-    WAITING = 'WAITING'
-    BOARDED = 'BOARDED'
-
-    num_passengers_total = 0
-
-    def __init__(self, floor=0, target=0):
-        self.floor = floor
-        self.target = target
-        self.status = Passenger.WAITING
-        # derived from start and target floor
-        # self.direction = 'UP'
-        self.waiting_time = 0
-        self.id = Passenger.num_passengers_total
-        Passenger.num_passengers_total += 1
-
-    def get_floor(self):
-        return self.floor
-
-    def get_target(self):
-        return self.target
-
-    def get_status(self):
-        return self.status
-
-    def set_floor(self, floor):
-        self.floor = floor
-
-    def set_target(self, target):
-        self.target = target
-
-    def get_waiting_time(self):
-        return self.waiting_time
-
-    def update(self):
-        pass
-
-
-class Elevator:
+class ElevatorState:
     # elevator direction
     UP = 1
     DOWN = -1
@@ -190,16 +203,57 @@ class Elevator:
     CONTINUE = 7
     NO_ACTION = 8
 
-    def __init__(self, controller=control.ReinforcementAgent(), floor=0, direction=Elevator.STOPPED,
-                 current_action=Elevator.NO_ACTION, capacity=20, num_passengers=0, action_in_progress=False, 
-                 status=Elevator.IDLE, constrained=False, acc=0, vel=0, pos=0, history=None,
+    num_elevators = 0
+
+    def __init__(self, environment, controller=control.ReinforcementAgent(), floor=0, direction=ElevatorState.STOPPED,
+                 current_action=ElevatorState.NO_ACTION, capacity=20, passengers=None, action_in_progress=False, 
+                 status=ElevatorState.IDLE, constrained=False, acc=0, vel=0, pos=0, history=None,
                  decision_time=None, decision_made=False, acc_update=None):
+        """
+        Represents state of an elevator.
+
+        Attributes
+        ----------
+        id : int
+
+        environment :
+        controller :
+
+        floor : int
+
+        direction : int
+
+        current_action :
+
+        capacity : int
+
+        passengers : dict
+            dictionary of lists mapping floor to passengers traveling to that floor
+        action_in_progress : bool
+
+        status : int
+        constrained : bool
+        True if current elevator action was constrained
+        eleration, velocity and position
+        acc : float
+        vel : float
+        pos : float
+        history :
+        decision_time : float
+        decision_made : bool
+        acc_update :
+
+        """
+        self.id = ElevatorState.num_elevators
+        ElevatorState.num_elevators += 1
+        self.environment = environment
         self.controller = controller
         self.floor = floor
         self.direction = direction
         self.current_action = current_action
         self.capacity = capacity
-        self.num_passengers = num_passengers
+        # dictionary of lists mapping floor to passengers traveling to that floor
+        self.passengers = {i : [] for i in range(self.environment.num_floors)}
         self.action_in_progress = action_in_progress
         self.status = status
         # True if current elevator action was constrained
@@ -257,169 +311,385 @@ class Elevator:
         self.pos += self.dpos()
 
 
-    def get_legal_actions(self, state):
-        # TODO: modelling
-        if self.state == Elevator.IDLE:
-            pass
-        elif self.state == Elevator.MOVING:
-            pass
-
-    def get_controller(self):
-        return self.controller
-
-    def get_floor(self):
-        return self.floor
-
-    def get_direction(self):
-        return self.direction
-
-    def get_action(self):
-        return self.current_action
-
-    def get_capacity(self):
-        return self.capacity 
-
-    def get_num_passengers(self):
-        return self.num_passengers
-
     def is_action_in_progress(self):
+        """Return True if an action is currently in progress."""
         return self.action_in_progress
 
-    def get_status(self):
-        return self.status
-
     def is_constrained(self):
+        """Return True if current action choice was constrained."""
         return self.constrained
 
-    def get_acceleration(self):
-        return self.acc
-
-    def get_velocity(self):
-        return self.vel
-
-    def get_position(self):
-        return self.pos
-
-    def get_motion(self):
-        return (self.acc, self.vel, self.pos)
-
-    def get_history(self):
-        return self.history
-
-    def get_decision_time(self):
-        return self.decision_time
-
     def is_decision_made(self):
+        """
+        Return True if elevator has made a decision at the moment
+        """
         return self.decision_made
 
-    def get_acc_update(self):
-        return self.acc_update
 
-    def set_controller(self, controller):
-        self.controller = controller
+    def capacity_left(self):
+        """
+        Return number of passengers that can still fit in the elevator right now.
+        """
+        return self.capacity - self.num_passengers()
 
-    def set_floor(self, floor):
-        self.floor = floor
+    def is_full(self):
+        """
+        Return True if number of passengers has reached elevator capacity.
+        """
+        return self.capacity_left == 0
 
-    def set_direction(self, direction):
-        self.direction = direction
+    def add_passengers(self, passengers):
+        """
+        Add given group of passengers to elevator
 
-    def set_action(self, action):
-        self.current_action = action
+        Parameters
+        ----------
+        passengers : list
 
-    def set_num_passengers(self, num_passengers):
-        self.num_passengers = num_passengers
+        passengers to be added
+        """
+        for passenger in passengers:
+            self.add_passenger(passenger)
 
-    def set_status(self, status):
-        self.status = status
+    def add_passenger(self, passenger):
+        """
+        Add given passenger to elevator
+        
+        Parameters
+        ----------
+        passenger : Passenger
+        """
+        passenger.enter_elevator(self)
 
-    def set_acceleration(self, acceleration):
-        self.acc = acceleration
+    
+    def car_calls(self):
+        """
+        Return remaining car calls in current direction, sorted in increasing floor order.
+        """
+        calls = []
+        for target_floor, passengers in self.passengers:
+            # someone going to that floor
+            if len(passengers) > 0:
+                calls.append(target_floor)
 
-    def set_velocity(self, velocity):
-        self.vel = velocity
-
-    def set_position(self, position):
-        self.pos = position
-
-    def set_history(self, history):
-        self.history = history
-
-    def set_decision_time(self, decision_time):
-        self.decision_time = decision_time
-
-    def set_acc_update(self, acc_update):
-        self.acc_update = acc_update
-
-
-class State:
-    def __init__(self):
-        # the number of remaining up hall calls from floors higher than the current position
-        self.hall_up_higher = 0
-        self.hall_down_higher = 0
-        self.hall_up_lower = 0
-        self.hall_down_lower = 0
-        # the number of remaining car calls in the current moving direction
-        self.current_car_calls = 0
-        self.floor = 0
-        self.direction = Elevator.STOPPED
-
-    def get_state(self):
-        return (self.hall_up_higher, self.hall_down_higher, self.hall_up_lower, self.hall_down_lower, self.current_car_calls, self.floor, self.direction)
-
-    def set_state(self, **kwargs):
-        for key, value in kwargs.items():
-            setattr(self, key, value)
-
-    def get_hall_up_higher(self):
-        return self.hall_up_higher
-
-    def get_hall_down_higher(self):
-        return self.hall_down_higher
-
-    def get_hall_up_lower(self):
-        return self.hall_up_lower
-
-    def get_hall_down_lower(self):
-        return self.hall_down_lower
-
-    def get_current_car_calls(self):
-        return self.current_car_calls
-
-    def get_floor(self):
-        return self.floor
-
-    def get_direction(self):
-        return self.floor
+        return calls
 
 
-    @staticmethod
-    def get_initial_state():
-        return (0, 0, 0, 0, 0, 0, Elevator.STOPPED)
+    def num_car_calls(self):
+        """
+        Return number of remaining car calls in current direction.
+        """
+        return len(self.car_calls())
+
+
+    def num_passengers(self):
+        res = 0
+        for _, passengers in self.passengers:
+            res += len(passengers)
+
+        return res
+
+    
+    def passengers_as_list(self):
+        """
+        Return list of passengers instead of dict for iteration purposes.
+        """
+        res = []
+        for _, passengers in self.passengers:
+            res += passengers
+
+        return res
+    
+    def reset(self, initial_state):
+        """
+        Reset the elevator to a given state.
+
+        Parameters
+        ----------
+        initial_state : dict
+            contains parameters defining the initial state
+        """
+        # self.controller = initial_state['controller']
+        self.floor = initial_state['start_floor']
+        self.direction = initial_state['start_direction']
+        self.current_action = ElevatorState.NO_ACTION
+        self.capacity = initial_state['capacity']
+        # dictionary of lists mapping floor to passengers traveling to that floor
+        self.passengers = {i : [] for i in range(self.environment.num_floors)}
+        self.action_in_progress = False
+        self.status = ElevatorState.IDLE
+        # True if current elevator action was constrained
+        self.constrained = False
+        # acceleration, velocity and position
+        self.acc = initial_state['acc']
+        self.vel = initial_state['vel']
+        self.pos = initial_state['pos']
         
 
-    def set_hall_up_higher(self, num_up_higher):
-        self.hall_up_higher = num_up_higher
+    # def get_legal_actions(self, state):
+    #     # TODO: modelling
+    #     if self.state == Elevator.IDLE:
+    #         pass
+    #     elif self.state == Elevator.MOVING:
+    #         pass
 
-    def set_hall_down_higher(self, num_down_higher):
-        self.hall_down_higher = num_down_higher
+    # def get_motion(self):
+    #     return (self.acc, self.vel, self.pos)
 
-    def set_hall_up_lower(self, num_up_lower):
-        self.hall_up_lower = num_up_lower
 
-    def set_hall_down_lower(self, num_down_lower):
-        self.hall_down_lower = num_down_lower
+class Floor:
+    def __init__(self, environment, level):
+        """
+        Represents a floor in a building
 
-    def set_current_car_calls(self, current_car_calls):
-        self.current_car_calls = current_car_calls
+        Attributes
+        ----------
+        environment : Environment
+        level : int
+            floor number
+        pos : float
+            vertical position in meters
+        arrival_rate : float
+            mean = 1 / lambda of poisson arrival process
+        passengers_up : list
+            contains passengers on floor going up
+        passengers_down : list
+            contains passengers on floor going down
+        up : bool
+            up hall button on this floor True if on
+        down : bool
+            down hall button on this floor True if on
+        """
+        self.environment = environment
+        self.level = level
+        self.pos = const.FLOOR_HEIGHT * self.level
+        self.passengers_up = []
+        self.passengers_down = []
+        self.up = False
+        self.down = False
 
-    def set_floor(self, floor):
+
+    def add_passenger(self, passenger):
+        """
+        Add passenger to floor.
+
+        Parameters
+        ----------
+        passenger : Passenger
+        """
+        if passenger.moving_up():
+            self.passengers_up.append(passenger)
+        else:
+            self.passengers_down.append(passenger)
+        passenger.floor = self
+
+
+    def all_passengers(self):
+        """
+        Return passengers going down and up
+
+        Returns
+        -------
+        all passengers : list
+            combined list of down and up passengers, in that order.
+        """
+        return self.passengers_down + self.passengers_up 
+
+
+    def num_waiting(self):
+        """
+        Return number of passengers waiting on the floor
+        """
+        return len(self.all_passengers())
+
+    def num_up(self):
+        """
+        Return number of passengers going up on this floor
+        """
+        return len(self.passengers_up)
+
+    def num_down(self):
+        """
+        Return number of passengers going down on this floor
+        """
+        return len(self.passengers_down)
+
+    def update_button(self, passenger=True, target=None, elevator_direction=None):
+        """
+        Update button state given an arriving passenger or arriving elevator
+        
+        To be called by arriving elevator or passenger.
+
+        Parameters
+        ----------
+        passenger : bool
+            true if button is updated by passenger arriving
+            false if button is updated by elvator arriving
+
+        target : int
+            if button is updated by passenger arriving, indicates target floor
+
+        elevator_direction : int
+            indicates direction if arriving elevator
+        """
+        # if no passengers: button - false -> true, if passengers already: true -> true
+        if passenger:
+            if target < self.level:
+                self.down = True
+            else:
+                self.up = True
+        else:
+            if elevator_direction == ElevatorState.UP:
+                self.up = False
+            else:
+                self.down = False
+
+
+    def get_buttons(self):
+        """
+        Return floor buttons state.
+
+        Returns
+        -------
+        tuple
+            state of the down and up buttons in that order
+        """
+        return (self.down, self.up)
+
+
+    def waiting_time(self):
+        """
+        Return sum of passenger waiting times on this floor.
+        """
+        result = 0
+        for passenger in self.all_passengers():
+            result += passenger.waiting_time
+
+
+    def board_passengers(self, elevator_state):
+        """
+        Transfer passengers from floor to elevator.
+
+        If capacity of elevator is not enough to accomodate passengers, transfer only first arrived
+        passengers until elevator capacity is full.
+
+        Called when elevator stops at floor.
+        """
+        capacity_left = elevator_state.capacity_left()
+        if elevator_state.direction == ElevatorState.UP:
+            if capacity_left < self.num_up():
+                passengers_boarding = self.passengers_up[:capacity_left]
+                del self.passengers_up[:capacity_left]
+            else:
+                passengers_boarding = self.passengers_up[:]
+                del self.passengers_up[:]
+        else:
+            if capacity_left < self.num_down():
+                passengers_boarding = self.passengers_down[:capacity_left]
+                del self.passengers_down[:capacity_left]
+            else:
+                passengers_boarding = self.passengers_down[:]
+                del self.passengers_down[:]
+            
+        elevator_state.add_passengers(passengers_boarding)
+
+
+    def reset(self):
+        self.passengers_up = []
+        self.passengers_down = []
+        self.up = False
+        self.down = False
+
+
+    def update(self):
+        # self.update_button()
+        pass
+
+    def __lt__(self, other):
+        return self.level < other.level 
+
+    def __gt__(self, other):
+        return self.level > other.level 
+    
+    def __eq__(self, other):
+        return self.level == other.level 
+
+
+    def __str__(self):
+        return '[Level: {}, num_waiting: {}]'.format(self.level, self.num_waiting)
+
+    def __repr__(self):
+        return '[Level: {}, num_waiting: {}]'.format(self.level, self.num_waiting())
+
+
+class Passenger:
+    WAITING = 0
+    BOARDED = 1
+
+    num_passengers_total = 0
+
+    def __init__(self, environment, floor, target=0):
+        self.environment = environment
+        # floor object
         self.floor = floor
+        self.target = self.choose_target()
+        # passenger presses button
+        self.floor.update_button(self.target)
+        self.status = Passenger.WAITING
+        # time passenger waits until elevator arrives
+        self.waiting_time = 0
+        # time passenger is in elevator
+        self.boarding_time = 0
 
-    def set_direction(self, direction):
-        self.floor = direction
+        self.id = Passenger.num_passengers_total
+        Passenger.num_passengers_total += 1
 
-    def set_initial_state(self):
+
+    def system_time(self):
+        """Return time passenger has been in system."""
+        return self.waiting_time + self.boarding_time
+
+    
+    def update_time(self):
+        """Update waiting or boarding time."""
+        pass
+
+
+    def going_up(self):
+        """Return True if passenger is going up."""
+        return self.target > self.floor
+
+
+    def going_down(self):
+        """Return True if passenger is going up."""
+        return self.target < self.floor
+    
+    
+    def choose_target(self):
+        """
+        Return target floor according to current traffic
+        """
+        return self.environment.traffic_profile.choose_target(self.floor)
+
+
+    def enter_elevator(self, elevator_state):
+        """
+        Change state of passenger when entering elevator.
+
+        Called by elevator or floor.
+
+        Changes passenger status and adds passenger to elevator's queue.
+
+        Parameters
+        ----------
+        elevator_state :
+            called by the elevator defined in that elevator state
+        """
+        self.status = Passenger.BOARDED
+
+        elevator_state.passengers[self.target].append(self)
+
+    def update(self):
         pass
 
 
@@ -430,11 +700,52 @@ class Action:
         pass
 
 
+class TrafficProfile(ABC):
+    def __init__(self, num_floors, interfloor=0):
+        """
+        Base class for traffic profiles such as DownPeak, UpPeak, etc.
 
-class TrafficProfile:
-    def __init__(self):
+        Attributes
+        ----------
+        interfloor : float
+            \in [0, 1], percentage of interfloor travel in terms of total arrival rate
+        """
+        self.num_floors =  num_floors
+        self.interfloor = interfloor
+
+    @abstractmethod
+    def choose_target(self, passenger):
         pass
 
-# q = Queue()
-# q.put(1)
-# print(q.qsize())
+
+class DownPeak(TrafficProfile):
+    def __init__(self, num_floors, interfloor=0):
+        """
+        Attributes
+        ----------
+        target_floor : int
+            floor to which most passengers are headed
+        arrival_rates: tuple
+            mean number of passengers during a typical afternoon business hour
+        """
+        super.__init__(num_floors, interfloor)
+        self.target_floor = 0
+
+    def choose_target(self, floor):
+        # with prob `interfloor' choose floor != target else choose target
+        if rnd.rand() < self.interfloor:
+            possible_floors = [pos_floor for pos_floor in range(self.num_floors) if pos_floor not in (0, floor)]
+            target = rnd.choice(possible_floors)
+        else:
+            target = self.target_floor
+
+        return target
+
+    def arrival_rate(self, time):
+        """
+        Return mean number of people arriving in this timeframe.
+        """
+        # index = 
+        # return const.DOWNPEAK_RATES[index]
+        pass
+        # TODO:

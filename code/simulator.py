@@ -6,13 +6,13 @@ from sortedcontainers import SortedList
 
 import constants as const
 
-from environment import Building, Floor, Elevator, Passenger
+from environment import Environment, Floor, ElevatorState, Passenger
 
 
 class Simulator():
-    TIME_STEP = 0.01 # in seconds
 
     def __init__(self):
+        self.time_step = const.TIME_STEP
         self.time = 0
         # could also be implemented as priority queue
         self.events = SortedList()
@@ -20,7 +20,7 @@ class Simulator():
         rnd.seed(self.seed)
 
         # TODO: parameterize this
-        self.building = Building(4, 1, [1, 2, 3, 4])
+        self.environment = Environment()
         
         self.max_time = 100 # seconds
 
@@ -28,7 +28,6 @@ class Simulator():
     def initialize_simulation(self):
         for floor in self.building.get_floors():
             PassengerSchedulerEvent(self.get_time(), floor).execute(self)
-
 
     def insert(self, event):
         self.events.add(event)
@@ -52,8 +51,8 @@ class Simulator():
 
 
     def step(self):
-        self.time = self.time + Simulator.TIME_STEP
-
+        self.time = self.time + self.time_step
+        
 
     def observe(self):
         pass

@@ -13,7 +13,7 @@ LOAD_TIME = 1
 FLOOR_TIME = 1
 
 # traffic constants
-
+DOWNPEAK_RATES = (1, 2, 4, 4, 18, 12, 8, 7, 18, 5, 3, 2)
 
 # motion dynamics
 ACCEL_TIME = 3.595 # seconds to accelerate to full speed from zero.
@@ -31,6 +31,7 @@ ACCEL_DECEL = (3.51757258, -6.4762952, 0.9575183, 1.94148245)
 
 
 # other
+TIME_STEP = 0.01 # in seconds
 SECONDS_PER_MINUTE = 60
 
 # numerical help with comparisons
