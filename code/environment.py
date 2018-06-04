@@ -1,18 +1,17 @@
 """
 Implements environment of the elevator model.
 """
-
 # user modules
 import constants as const
-import control
 
 # other modules
 import numpy as np
 import numpy.random as rnd
 from abc import ABC, abstractmethod
-from queue import Queue
+# from queue import Queue
 
-from time import time, sleep
+# from time import time, sleep
+from qlearningAgents import ElevatorQAgent
 
 
 class Environment:
@@ -21,26 +20,27 @@ class Environment:
 
     Attributes
     ----------
-    arrival_rates
-    traffic_profile
-    num_floors
-    num_elevators
-    floors
-    elevators
-    state
+    traffic_profile :
+        object that describes traffic profile of the environment
+    num_floors : int
+        number of floors in the building, including ground floor
+    num_elevators : int
+        number of elevators in the building
+    floors : list
+        floor i can be accessed by floors[i], where ground floor is floor[0].
+    elevators : list
+        elevator i can be accessed by elevators[i]
     """
     def __init__(self, num_floors=5, num_elevators=1, traffic_profile='down_peak'):
         if traffic_profile == 'down_peak':
             self.traffic_profile = DownPeak(num_floors)
         else:
             self.traffic_profile = DownPeak(num_floors)
-        
+
         self.num_floors = num_floors
         self.num_elevators = num_elevators
-        # initialize floors
         self.floors = [Floor(level) for level in range(self.num_floors)]
-        self.elevators = []
-        # etc.
+        self.elevators = [ElevatorState(self) for _ in range(self.num_elevators)]
 
     def update(self):
         """
@@ -54,18 +54,17 @@ class Environment:
         """
         pass
 
-
     def get_learning_state(self, elevator_state):
         """
         Return the state used by a learning agent.
 
         The learning state is mapped to an action by the learning agent.
         It consists of, in the following order:
-            - the number of up hall calls above the elevator  
-            - the number of down hall calls above the elevator  
-            - the number of up hall calls below the elevator  
-            - the number of down hall calls below the elevator  
-            - the number of car calls in the current direction of the elevator  
+            - the number of up hall calls above the elevator
+            - the number of down hall calls above the elevator
+            - the number of up hall calls below the elevator
+            - the number of down hall calls below the elevator
+            - the number of car calls in the current direction of the elevator
             - current position (floor) of the elevator
             - current direction of the elevator
 
@@ -83,7 +82,6 @@ class Environment:
         return (self.num_hall_calls(es, down=True, above=True), self.num_hall_calls(es, down=False, above=True),
                 self.num_hall_calls(es, down=True, above=False), self.num_hall_calls(es, down=False, above=False),
                 elevator_state.num_car_calls(), elevator_state.floor, elevator_state.direction)
-
 
     def get_buttons(self, down=False, up=False):
         """
@@ -110,7 +108,6 @@ class Environment:
 
         return all_buttons
 
-
     def num_hall_calls(self, elevator_state, down=False, above=False):
         """
         Return number of hall calls relative to elevator position.
@@ -120,14 +117,14 @@ class Environment:
         elevator_state :
             state of elevator
         down : bool
-            If true, look at down hall calls, up hall calls otherwise 
+            If true, look at down hall calls, up hall calls otherwise
         above : bool
             If true, look at hall calls above elevator, below otherwise
-        
+
         Returns
         -------
         int
-            number of up/down hall calls above/below elevator 
+            number of up/down hall calls above/below elevator
         """
         current_floor = elevator_state.floor
 
@@ -135,9 +132,8 @@ class Environment:
 
         if above:
             return sum(buttons[current_floor + 1:])
-        else:
-            return sum(buttons[:current_floor])
 
+        return sum(buttons[:current_floor])
 
     def get_possible_actions(self, state):
         """
@@ -147,7 +143,6 @@ class Environment:
           a terminal state.
         """
         pass
-
 
     def do_action(self, action):
         """
@@ -162,13 +157,25 @@ class Environment:
         """
           Resets the current state to the blank state
         """
+        init_state = self.get_initial_state()
         for elevator in self.elevators:
-            elevator.reset()
+            elevator.reset(init_state)
 
         for floor in self.floors:
             floor.reset()
 
-        
+    def get_initial_state(self):
+        """
+        Return a dictionary containing initial state parameters.
+
+        Returns
+        -------
+        dict
+            containing initial state parameters
+        """
+        return {'start_floor': 0, 'start_direction': ElevatorState.STOPPED, 'capacity': 20,
+                'acc': 0, 'vel': 0, 'pos': 0}
+
     def is_terminal(self):
         """
           Has the enviornment entered a terminal
@@ -178,15 +185,55 @@ class Environment:
         actions = self.get_possible_actions(state)
         return len(actions) == 0
 
-
     def __str__(self):
-        pass
+        res = 'elevator positions - '
+        for i in range(self.num_elevators):
+            res += '{}: {}, '.format(i, self.elevators[i].floor)
+        return res[:-2]
 
     def __repr__(self):
-        pass
+        return 'Environment(num_floors={}, num_elevators={}, traffic_profile={})'.format(
+            self.num_floors, self.num_elevators, self.traffic_profile)
 
 
 class ElevatorState:
+    """
+    Represents state of an elevator.
+
+    Attributes
+    ----------
+    id : int
+        elevator id
+    environment :
+        state of the environment
+    controller :
+        agent controlling the elevator
+    floor : int
+        floor the elevator is at. if elevator is moving between floor, value is the last floor
+        the elevator passed/stopped.
+    direction : int
+        current direction of the elevator: up, down, or stopped
+    current_action :
+        current action the elevator is taking
+    capacity : int
+        maximum number of people that can get into the elevator at the same time.
+    passengers : dict
+        dictionary of lists mapping floor to passengers traveling to that floor
+    action_in_progress : bool
+        true if elevator is currently performing an action
+    status : int
+        indicate elevator status: accelerating, decelerating, full speed or idle
+    constrained : bool
+        true if current action taken was constrained i.e. the elevator had no choice.
+    motion :
+        object handling elevator motion
+    history : list
+        containing ?
+    decision_time : float
+        time at which last decision was made
+    decision_made : bool
+        true if a decision was made (?)
+    """
     # elevator direction
     UP = 1
     DOWN = -1
@@ -195,121 +242,38 @@ class ElevatorState:
     # elevator status
     IDLE = 2
     ACCELERATING = 3
-    DECELERATING = 4
-    FULL_SPEED = 5
- 
+    FULL_SPEED_DECELERATING = 4  # decelerating after reaching full speed
+    ACCEL_DECELERATING = 5  # decelerating after just accelerating
+    FULL_SPEED = 6  # moving at full speed
+
     # elevator actions
-    STOP = 6
-    CONTINUE = 7
-    NO_ACTION = 8
+    STOP = 7
+    CONTINUE = 8
+    NO_ACTION = 9
 
     num_elevators = 0
 
-    def __init__(self, environment, controller=control.ReinforcementAgent(), floor=0, direction=ElevatorState.STOPPED,
-                 current_action=ElevatorState.NO_ACTION, capacity=20, passengers=None, action_in_progress=False, 
-                 status=ElevatorState.IDLE, constrained=False, acc=0, vel=0, pos=0, history=None,
-                 decision_time=None, decision_made=False, acc_update=None):
-        """
-        Represents state of an elevator.
-
-        Attributes
-        ----------
-        id : int
-
-        environment :
-        controller :
-
-        floor : int
-
-        direction : int
-
-        current_action :
-
-        capacity : int
-
-        passengers : dict
-            dictionary of lists mapping floor to passengers traveling to that floor
-        action_in_progress : bool
-
-        status : int
-        constrained : bool
-        True if current elevator action was constrained
-        eleration, velocity and position
-        acc : float
-        vel : float
-        pos : float
-        history :
-        decision_time : float
-        decision_made : bool
-        acc_update :
-
-        """
+    def __init__(self, environment, controller=ElevatorQAgent(), floor=0, direction=None,
+                 current_action=None, capacity=20, action_in_progress=False,
+                 status=None, constrained=False, acc=0, vel=0, pos=0, history=None,
+                 decision_time=None, decision_made=False):
         self.id = ElevatorState.num_elevators
         ElevatorState.num_elevators += 1
         self.environment = environment
         self.controller = controller
         self.floor = floor
-        self.direction = direction
-        self.current_action = current_action
+        self.direction = direction if direction else ElevatorState.STOPPED 
+        self.current_action = current_action if current_action else ElevatorState.NO_ACTION 
         self.capacity = capacity
-        # dictionary of lists mapping floor to passengers traveling to that floor
-        self.passengers = {i : [] for i in range(self.environment.num_floors)}
+        self.passengers = {i: [] for i in range(self.environment.num_floors)}
         self.action_in_progress = action_in_progress
         self.status = status
-        # True if current elevator action was constrained
+        self.status = status if status else ElevatorState.IDLE
         self.constrained = constrained
-        # acceleration, velocity and position
-        self.acc = acc
-        self.vel = vel
-        self.pos = pos
-
-        # time, acc, vel, pos, action taken
-        self.history = history
+        self.motion = ElevatorMotion(self, acc, vel, pos)
+        self.history = history if history else []
         self.decision_time = decision_time
         self.decision_made = decision_made
-        self.acc_update = acc_update
-
-    def dacc(self, time, dt):
-        """
-        Return the change in acceleration for a given timestep.
-
-        Change in acceleration is approximated: da(t) approx a'(t)dt
-        """
-        # TODO: condition return depending on status (and position?)
-        return np.cos(const.ACCEL_CONST * time) * dt 
-
-    def dacc2(self, dt):
-        # c = [3.36406177, -6.15411438, 0.84932998, 1.94148245]
-        x = self.time - self.decision_time
-
-        return (2 * const.ACCEL_DECEL[0] * x + const.ACCEL_DECEL[1]) * dt
-
-
-    def dvel(self):
-        return self.acc * self.dt
-
-    def vel_(self):
-        return - 1 / C**2 * (math.cos(C * self.time) - 1)
-
-    def dpos(self):
-        return self.vel * self.dt
-
-    def update(self):
-        if self.pos >= 1.83:
-            self.acc_update = self.dacc2
-            if not self.decision_made:
-                # print(self.time)
-                # print(self.acc)
-                # print(self.vel)
-                # print(self.pos)
-                self.decision_time = self.time
-                self.decision_made = True
-        else:
-            self.acc_update = self.dacc
-        self.acc += self.direction * self.acc_update()
-        self.vel += self.dvel()
-        self.pos += self.dpos()
-
 
     def is_action_in_progress(self):
         """Return True if an action is currently in progress."""
@@ -324,7 +288,6 @@ class ElevatorState:
         Return True if elevator has made a decision at the moment
         """
         return self.decision_made
-
 
     def capacity_left(self):
         """
@@ -354,14 +317,13 @@ class ElevatorState:
     def add_passenger(self, passenger):
         """
         Add given passenger to elevator
-        
+
         Parameters
         ----------
         passenger : Passenger
         """
         passenger.enter_elevator(self)
 
-    
     def car_calls(self):
         """
         Return remaining car calls in current direction, sorted in increasing floor order.
@@ -374,13 +336,11 @@ class ElevatorState:
 
         return calls
 
-
     def num_car_calls(self):
         """
         Return number of remaining car calls in current direction.
         """
         return len(self.car_calls())
-
 
     def num_passengers(self):
         res = 0
@@ -389,7 +349,6 @@ class ElevatorState:
 
         return res
 
-    
     def passengers_as_list(self):
         """
         Return list of passengers instead of dict for iteration purposes.
@@ -399,7 +358,7 @@ class ElevatorState:
             res += passengers
 
         return res
-    
+
     def reset(self, initial_state):
         """
         Reset the elevator to a given state.
@@ -415,59 +374,135 @@ class ElevatorState:
         self.current_action = ElevatorState.NO_ACTION
         self.capacity = initial_state['capacity']
         # dictionary of lists mapping floor to passengers traveling to that floor
-        self.passengers = {i : [] for i in range(self.environment.num_floors)}
+        self.passengers = {i: [] for i in range(self.environment.num_floors)}
         self.action_in_progress = False
         self.status = ElevatorState.IDLE
         # True if current elevator action was constrained
         self.constrained = False
         # acceleration, velocity and position
-        self.acc = initial_state['acc']
-        self.vel = initial_state['vel']
-        self.pos = initial_state['pos']
-        
+        self.motion.acc = initial_state['acc']
+        self.motion.vel = initial_state['vel']
+        self.motion.pos = initial_state['pos']
 
-    # def get_legal_actions(self, state):
-    #     # TODO: modelling
-    #     if self.state == Elevator.IDLE:
-    #         pass
-    #     elif self.state == Elevator.MOVING:
-    #         pass
+    def __repr__(self):
+        return 'ElevatorState(environment, controller={}, floor={}, direction={},\
+                 current_action={}, capacity={}, action_in_progress={},\
+                 status={}, constrained={}, acc={}, vel={}, pos={}, decision_time={},\
+                 decision_made={})'.format(self.controller, self.floor, self.direction,
+                 self.current_action, self.capacity, self.action_in_progress, self.status,
+                 self.constrained, self.motion.acc, self.motion.vel, self.motion.pos, self.decision_time,
+                 self.decision_made)
 
-    # def get_motion(self):
-    #     return (self.acc, self.vel, self.pos)
+
+class ElevatorMotion:
+    """
+    Contains information regarding motion of the elevator as well as how to update it.
+
+    Attributes
+    ----------
+    elevator_state :
+        state of the elevator
+    acc : float
+        elevator acceleration in m/s^2
+    vel : float
+        elevator velocity in m/s
+    pos : float
+        elevator position in m
+    acc_update : func
+        function that dictates how elevator acceleration is updated. depends on state, action, etc.
+    reference_time: float
+        time in s which acceleration function evaluates as 0
+    """
+    def __init__(self, elevator_state, acc=0, vel=0, pos=0, reference_time=0):
+        self.elevator_state = elevator_state
+        self.acc = acc
+        self.vel = vel
+        self.pos = pos
+        self.reference_time = reference_time
+
+    def dacc(self, simulator):
+        """
+        Return the change in acceleration for a given timestep.
+
+        The change in acceleration depends on state of the elevator,
+        action taken by the elevator.
+
+        Change in acceleration is approximated: da(t) approx a'(t)dt
+
+        Parameters
+        ----------
+        simulator :
+            simulator object which has information about time and timestep size
+        """
+        t = simulator.now() - self.reference_time
+
+        if self.elevator_state.status == ElevatorState.ACCELERATING:
+            res = np.cos(const.ACCEL_CONST * t)
+        elif self.elevator_state.status == ElevatorState.ACCEL_DECELERATING:
+            res = (2 * const.ACCEL_DECEL[0] * t + const.ACCEL_DECEL[1])
+        elif self.elevator_state.status == ElevatorState.FULL_SPEED_DECELERATING:
+            res = - np.cos(const.ACCEL_CONST * t)
+
+        return res * simulator.time_step
+
+    def dvel(self, simulator):
+        """
+        Return change of velocity in a single time step.
+        """
+        return self.acc * simulator.time_step
+
+    # def vel_(self):
+    #     return - 1 / C**2 * (math.cos(C * self.time) - 1)
+
+    def dpos(self, simulator):
+        """
+        Return change of position in a single time step.
+        """
+        return self.vel * simulator.time_step
+
+    def update(self, simulator):
+        """Update elevator motion state."""
+        if self.elevator_state.status == ElevatorState.IDLE or self.elevator_state.status == ElevatorState.FULL_SPEED:
+            self.acc = 0
+        else:
+            self.acc += self.elevator_state.direction * self.dacc(simulator)
+
+        self.vel += self.dvel(simulator)
+        self.pos += self.dpos(simulator)
+
+    def __repr__(self):
+        return 'ElevatorMotion(elevator_state, acc={}, vel={}, pos={}, reference_time={})'.format(
+            self.acc, self.vel, self.pos, self.reference_time)
 
 
 class Floor:
-    def __init__(self, environment, level):
-        """
-        Represents a floor in a building
+    """
+    Represents a floor in a building.
 
-        Attributes
-        ----------
-        environment : Environment
-        level : int
-            floor number
-        pos : float
-            vertical position in meters
-        arrival_rate : float
-            mean = 1 / lambda of poisson arrival process
-        passengers_up : list
-            contains passengers on floor going up
-        passengers_down : list
-            contains passengers on floor going down
-        up : bool
-            up hall button on this floor True if on
-        down : bool
-            down hall button on this floor True if on
-        """
-        self.environment = environment
+    Attributes
+    ----------
+    level : int
+        floor number
+    pos : float
+        vertical position in meters
+    arrival_rate : float
+        mean = 1 / lambda of poisson arrival process
+    passengers_up : list
+        contains passengers on floor going up
+    passengers_down : list
+        contains passengers on floor going down
+    up : bool
+        up hall button on this floor True if on
+    down : bool
+        down hall button on this floor True if on
+    """
+    def __init__(self, level):
         self.level = level
         self.pos = const.FLOOR_HEIGHT * self.level
         self.passengers_up = []
         self.passengers_down = []
         self.up = False
         self.down = False
-
 
     def add_passenger(self, passenger):
         """
@@ -481,8 +516,8 @@ class Floor:
             self.passengers_up.append(passenger)
         else:
             self.passengers_down.append(passenger)
-        passenger.floor = self
 
+        self.update_button(target=passenger.target)
 
     def all_passengers(self):
         """
@@ -493,8 +528,7 @@ class Floor:
         all passengers : list
             combined list of down and up passengers, in that order.
         """
-        return self.passengers_down + self.passengers_up 
-
+        return self.passengers_down + self.passengers_up
 
     def num_waiting(self):
         """
@@ -517,7 +551,7 @@ class Floor:
     def update_button(self, passenger=True, target=None, elevator_direction=None):
         """
         Update button state given an arriving passenger or arriving elevator
-        
+
         To be called by arriving elevator or passenger.
 
         Parameters
@@ -544,7 +578,6 @@ class Floor:
             else:
                 self.down = False
 
-
     def get_buttons(self):
         """
         Return floor buttons state.
@@ -556,7 +589,6 @@ class Floor:
         """
         return (self.down, self.up)
 
-
     def waiting_time(self):
         """
         Return sum of passenger waiting times on this floor.
@@ -564,7 +596,6 @@ class Floor:
         result = 0
         for passenger in self.all_passengers():
             result += passenger.waiting_time
-
 
     def board_passengers(self, elevator_state):
         """
@@ -590,16 +621,14 @@ class Floor:
             else:
                 passengers_boarding = self.passengers_down[:]
                 del self.passengers_down[:]
-            
-        elevator_state.add_passengers(passengers_boarding)
 
+        elevator_state.add_passengers(passengers_boarding)
 
     def reset(self):
         self.passengers_up = []
         self.passengers_down = []
         self.up = False
         self.down = False
-
 
     def update(self):
         # self.update_button()
@@ -612,65 +641,87 @@ class Floor:
         return self.level > other.level 
     
     def __eq__(self, other):
-        return self.level == other.level 
-
+        return self.level == other.level
 
     def __str__(self):
-        return '[Level: {}, num_waiting: {}]'.format(self.level, self.num_waiting)
+        return '[Level: {}, num waiting: {}]'.format(self.level, self.num_waiting())
 
     def __repr__(self):
-        return '[Level: {}, num_waiting: {}]'.format(self.level, self.num_waiting())
+        return 'Floor(level={})'.format(self.level)
 
 
 class Passenger:
+    """
+    Represents a passenger.
+
+    Parameters
+    ----------
+    target : int
+        indicates floor to which the passenger wants to travel
+    environment :
+        environment
+    floor :
+        floor on which the passenger is waiting
+    status : int
+        passenger status: either waiting or boarded
+    arrival_time : float
+        time when the passenger arrived on the floor
+    boarding_time : float
+        time when the passenger boarded an elevator
+    id : int
+        unique passenger identifier
+    """
     WAITING = 0
     BOARDED = 1
 
     num_passengers_total = 0
 
-    def __init__(self, environment, floor, target=0):
-        self.environment = environment
-        # floor object
-        self.floor = floor
-        self.target = self.choose_target()
-        # passenger presses button
-        self.floor.update_button(self.target)
+    def __init__(self, floor, target=None):
+        """
+        Initialize passenger and immediately handle updating the floor state
+        """
+        if target:
+            self.target = target
         self.status = Passenger.WAITING
-        # time passenger waits until elevator arrives
-        self.waiting_time = 0
-        # time passenger is in elevator
-        self.boarding_time = 0
-
+        self.boarded_time = 0
         self.id = Passenger.num_passengers_total
         Passenger.num_passengers_total += 1
+        self.floor = floor
 
-
-    def system_time(self):
+    def arrive_at_floor(self, simulator, environment):
+        self.arrival_time = simulator.now()
+        self.target = self.choose_target(environment)
+        self.floor.add_passenger(self)
+        
+    def system_time(self, simulator):
         """Return time passenger has been in system."""
-        return self.waiting_time + self.boarding_time
+        return simulator.now() - self.arrival_time
 
-    
+    def waiting_time(self, simulator):
+        """Return time passenger has/had waited for an elevator."""
+        return simulator.now() - self.arrival_time - self.boarded_time * (self.status == Passenger.BOARDED)
+
+    def boarding_time(self, simulator):
+        """Return time passenger has been in elevator"""
+        return (simulator.now() - self.boarded_time) * (self.status == Passenger.BOARDED)
+
     def update_time(self):
         """Update waiting or boarding time."""
         pass
-
 
     def going_up(self):
         """Return True if passenger is going up."""
         return self.target > self.floor
 
-
     def going_down(self):
         """Return True if passenger is going up."""
         return self.target < self.floor
     
-    
-    def choose_target(self):
+    def choose_target(self, environment):
         """
         Return target floor according to current traffic
         """
-        return self.environment.traffic_profile.choose_target(self.floor)
-
+        return environment.traffic_profile.choose_target(self.floor)
 
     def enter_elevator(self, elevator_state):
         """
@@ -692,6 +743,9 @@ class Passenger:
     def update(self):
         pass
 
+    def __repr__(self):
+        return 'Passenger(floor={}, target={})'.format(self.floor, self.target)
+
 
 class Action:
     """This class contains static methods relating to actions."""
@@ -710,7 +764,7 @@ class TrafficProfile(ABC):
         interfloor : float
             \in [0, 1], percentage of interfloor travel in terms of total arrival rate
         """
-        self.num_floors =  num_floors
+        self.num_floors = num_floors
         self.interfloor = interfloor
 
     @abstractmethod
@@ -728,7 +782,7 @@ class DownPeak(TrafficProfile):
         arrival_rates: tuple
             mean number of passengers during a typical afternoon business hour
         """
-        super.__init__(num_floors, interfloor)
+        super().__init__(num_floors, interfloor)
         self.target_floor = 0
 
     def choose_target(self, floor):
@@ -744,8 +798,15 @@ class DownPeak(TrafficProfile):
     def arrival_rate(self, time):
         """
         Return mean number of people arriving in this timeframe.
+
+        Parameters
+        ----------
+        time : float
+            time in milliseconds after starting simulation
         """
-        # index = 
-        # return const.DOWNPEAK_RATES[index]
-        pass
-        # TODO:
+        minutes_in = time / const.SECONDS_PER_MINUTE
+        index = int(minutes_in / const.MINUTES_PER_TIME_INTERVAL)
+        return const.DOWNPEAK_RATES[index]
+
+    def __repr__(self):
+        return 'DownPeak(num_floors={}, interfloor={})'.format(self.num_floors, self.interfloor)

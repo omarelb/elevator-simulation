@@ -27,12 +27,16 @@ ACCEL_DECISION_DIST = 1.83 # FLOOR_HEIGHT / 2
 
 # parameters for decelerating while accelerating at half floor height
 # parabola: a(t) = c_1*x^2 + c_2 * x + c_3
+#           --> da(t) \approx  2*c_1*x + c_2
 ACCEL_DECEL = (3.51757258, -6.4762952, 0.9575183, 1.94148245)
+# c = [3.36406177, -6.15411438, 0.84932998, 1.94148245] <-- alternative
 
 
 # other
 TIME_STEP = 0.01 # in seconds
 SECONDS_PER_MINUTE = 60
+MILLISECONDS_PER_SECOND = 1000
+MINUTES_PER_TIME_INTERVAL = 5
 
 # numerical help with comparisons
 GENERAL_EPS = 0.0001

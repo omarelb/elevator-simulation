@@ -45,6 +45,8 @@ class QLearningAgent(ReinforcementAgent):
         # initialize them all to zero
         # qvalues can be accessed through self.qvalues[(state, action)]
         self.qvalues = util.Counter()
+        # cost accumulator for an elevator.
+        self.cost_accumulator = 0
 
 
     def get_qvalue(self, state, action):
@@ -155,7 +157,7 @@ class QLearningAgent(ReinforcementAgent):
         return self.compute_value_from_qvalues(state)
 
 
-class PacmanQAgent(QLearningAgent):
+class ElevatorQAgent(QLearningAgent):
     "Exactly the same as QLearningAgent, but with different default parameters"
 
     def __init__(self, epsilon=0.05,gamma=0.8,alpha=0.2, num_training=0, **args):
