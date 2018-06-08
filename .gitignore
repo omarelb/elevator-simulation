@@ -16,3 +16,4 @@ BScEORthesis-template-and-guide.pdf
 *.run.xml
 *.synctex.gz
 *.toc
+*.pyc

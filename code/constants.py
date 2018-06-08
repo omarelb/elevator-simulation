@@ -21,7 +21,10 @@ MAX_SPEED = 2.54 # m/s
 # motion for accelerating and decelerating from full speed: a(t) = sin(C*t) <- C 
 ACCEL_CONST = 0.8871057 
 # decision point distance for elevator at full speed
-FULL_SPEED_DECISION_DIST = 4.6363218403
+# to next floor
+# FULL_SPEED_DECISION_DIST = 4.6363218403
+# from last floor
+FULL_SPEED_DECISION_DIST = 2.6836781597
 # decision point distance for accelerating elevator
 ACCEL_DECISION_DIST = 1.83 # FLOOR_HEIGHT / 2
 
@@ -40,3 +43,5 @@ MINUTES_PER_TIME_INTERVAL = 5
 
 # numerical help with comparisons
 GENERAL_EPS = 0.0001
+
+LOG_DIR = 'logs'

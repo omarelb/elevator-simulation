@@ -18,6 +18,7 @@ from learningAgents import ReinforcementAgent
 
 import random, util, math
 
+
 class QLearningAgent(ReinforcementAgent):
     """
       Q-Learning Agent
@@ -48,7 +49,6 @@ class QLearningAgent(ReinforcementAgent):
         # cost accumulator for an elevator.
         self.cost_accumulator = 0
 
-
     def get_qvalue(self, state, action):
         """
           Returns Q(state,action)
@@ -56,7 +56,6 @@ class QLearningAgent(ReinforcementAgent):
           or the Q node value otherwise
         """
         return self.qvalues[(state, action)]
-
 
     def compute_value_from_qvalues(self, state):
         """
@@ -127,7 +126,6 @@ class QLearningAgent(ReinforcementAgent):
             return random.choice(legal_actions)
         return self.compute_action_from_qvalues(state)
 
-
     def update(self, state, action, next_state, reward):
         """
           The parent class calls this to observe a
@@ -148,7 +146,6 @@ class QLearningAgent(ReinforcementAgent):
         sample = reward + self.discount * max_next_q
 
         self.qvalues[(state, action)] = (1 - self.alpha) * self.get_qvalue(state, action) + self.alpha * sample
-
 
     def get_policy(self, state):
         return self.compute_action_from_qvalues(state)
@@ -184,7 +181,7 @@ class ElevatorQAgent(QLearningAgent):
         informs parent of action for Pacman.  Do not change or remove this
         method.
         """
-        action = QLearningAgent.get_action(self,state)
+        action = QLearningAgent.get_action(self, state)
         self.do_action(state, action)
         return action
 

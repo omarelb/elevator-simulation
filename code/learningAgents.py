@@ -25,7 +25,7 @@ class Agent:
     def __init__(self, index=0):
         self.index = index
 
-    def get_action(self, state):
+    def get_action(self, simulator):
         """
         The Agent will receive a GameState (from either {pacman, capture, sonar}.py) and
         must return an action from Directions.{North, South, East, West, Stop}
