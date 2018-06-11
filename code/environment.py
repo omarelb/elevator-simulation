@@ -13,7 +13,7 @@ from os.path import join
 
 # from time import time, sleep
 from qlearningAgents import ElevatorQAgent
-from heuristicAgents import RandomAgent
+from heuristicAgents import RandomAgent, BestFirstAgent
 import events
 
 logger = logging.getLogger(__name__)
@@ -102,16 +102,14 @@ class Environment:
                 self.num_hall_calls(es.floor, down=True, above=False), self.num_hall_calls(es.floor, down=False, above=False),
                 elevator_state.num_car_calls(), elevator_state.floor, elevator_state.direction)
 
-    def get_buttons(self, down=False, up=False, down_up=False):
+    def get_buttons(self, down=False, down_up=False):
         """
         Return button state of all floors.
 
         Parameters
         ----------
         down : bool
-            If true, return only down button state
-        up : bool
-            If true, return only up button state
+            If true, return only down button state, only up button state otherwise
         down_up : bool
             If true return both down and up buttons as a tuple down_buttons, up_buttons 
 
@@ -125,10 +123,7 @@ class Environment:
             return tuple(buttons[0] for buttons in all_buttons), tuple(buttons[1] for buttons in all_buttons)
         if down:
             return tuple(buttons[0] for buttons in all_buttons)
-        if up:
-            return tuple(buttons[1] for buttons in all_buttons)
-
-        return all_buttons
+        return tuple(buttons[1] for buttons in all_buttons)
 
     def no_buttons_pressed(self):
         """
@@ -137,7 +132,7 @@ class Environment:
         buttons_down, buttons_up = self.get_buttons(down_up=True)
         return sum(buttons_down) + sum(buttons_up) == 0
 
-    def num_hall_calls(self, level, down=False, above=False, down_up=False):
+    def num_hall_calls(self, level, down=False, above=False, down_up=True):
         """
         Return number of hall calls relative to a floor level.
 
@@ -149,20 +144,26 @@ class Environment:
             If true, look at down hall calls, up hall calls otherwise
         above : bool
             If true, look at hall calls above elevator, below otherwise
+        down_up : bool
+            If true, look at both up and down hall calls
 
         Returns
         -------
         int
             number of up/down hall calls above/below elevator
         """
-        buttons = self.get_buttons(down, above, down_up)
+        buttons = self.get_buttons(down, down_up)
+        if down_up:
+            if above:
+                return sum(buttons[0][level + 1:]) + sum(buttons[1][level + 1:])
+            return sum(buttons[0][:level]) + sum(buttons[1][:level])
 
         if above:
             return sum(buttons[level + 1:])
 
         return sum(buttons[:level])
 
-    def is_hall_call(self, level, down=False, above=False, down_up=False):
+    def is_hall_call(self, level, down=False, above=False, down_up=True):
         """
         Return True if there is at least one hall call in the specified direction.
 
@@ -182,7 +183,7 @@ class Environment:
         int
             number of up/down hall calls above/below elevator
         """
-        return self.num_hall_calls(level, down_up=True) > 0
+        return self.num_hall_calls(level, down, above, down_up) > 0
 
     def get_possible_actions(self, elevator_state):
         """
@@ -201,60 +202,56 @@ class Environment:
             actions which be taken by the agent
         """
         status = elevator_state.status
-        num_hall_call_above_up = self.num_hall_calls(elevator_state.floor, down=False, above=True)
-        num_hall_call_above_down = self.num_hall_calls(elevator_state.floor, down=False, above=True)
-        num_hall_calls_above = num_hall_call_above_up + num_hall_call_above_down
 
         # cannot take new action when action is still in progress or no passengers in system
-        if elevator_state.is_action_in_progress() or self.no_buttons_pressed():
+        if (elevator_state.is_action_in_progress() or status == ElevatorState.BOARDING or
+            (self.no_buttons_pressed() and elevator_state.is_empty())):
             return ()
 
         if status == ElevatorState.IDLE:
                 # heuristic: prefer to move up
-                if num_hall_calls_above > 0:
+                if self.is_hall_call(elevator_state.floor, above=True, down_up=True):
                     return (ElevatorState.MOVE_UP,)
                 return (ElevatorState.MOVE_DOWN,)
 
-        if status == ElevatorState.BOARDING:
-                if elevator_state.direction == ElevatorState.UP:
-                    # TODO: Check order of calling this and updating passengers on this floor
-                    # if still hall calls in current direction, can not turn
-                    if self.is_hall_call(elevator_state.floor, above=True, down_up=True):
-                        return (ElevatorState.MOVE_UP,)
-                elif elevator_state.direction == ElevatorState.DOWN:
-                    if self.is_hall_call(elevator_state.floor, above=False, down_up=True):
-                        return (ElevatorState.MOVE_DOWN,)
+        if status == ElevatorState.DONE_BOARDING:
+            # not have both passengers going up and down
+            num_pass_up = elevator_state.num_passengers_up()
+            num_pass_down = elevator_state.num_passengers_down()
+            assert num_pass_up * num_pass_down == 0, 'elevator contains passengers going up AND down'
+            # has to service car calls in current direction
+            if num_pass_down > 0:
+                return (ElevatorState.MOVE_DOWN,)
+            elif num_pass_up > 0:
+                return (ElevatorState.MOVE_UP,)
+            else:
+                if self.is_hall_call(elevator_state.floor, above=True, down_up=True):
+                    return (ElevatorState.MOVE_UP,)
+                if self.is_hall_call(elevator_state.floor, above=False, down_up=True):
+                    return (ElevatorState.MOVE_DOWN,)
+            return ()
 
-        last_floor_pos = self.floors[elevator_state.floor].pos
-        elevator_dist = abs(elevator_state.motion.pos - last_floor_pos)
-        if elevator_state.status == ElevatorState.ACCELERATING:
-            # decision point, half of floor height
-            if elevator_dist >= const.FLOOR_HEIGHT / 2 - const.GENERAL_EPS:
-                stop_target = elevator_state.next_floor(self.floors)
-                elevator_state.stop_target = stop_target.level
-                # cannot pass floor if a passenger wants to get off there
-                if stop_target.level in elevator_state.car_calls():
-                    return (ElevatorState.STOP,)
-                if elevator_dist.direction == ElevatorState.UP:
-                    if stop_target.num_down() > 0 and num_hall_call_above_up == 0:
-                        return (ElevatorState.STOP,)
-                if not elevator_state.is_passenger_next_floor(self.floors):
-                    # no passenger wants to get on or off next floor -> force continue
-                    return (ElevatorState.CONTINUE,)
-                else:
-                    return (ElevatorState.STOP, ElevatorState.CONTINUE)
+        if elevator_state.is_decision_point(self):
+            if elevator_state.status == ElevatorState.ACCELERATING:
+                amount = 1
+            elif elevator_state.status == ElevatorState.FULL_SPEED:
+                amount = 2
+            stop_target = elevator_state.next_floor(self.floors, amount=amount).level
+            elevator_state.stop_target = stop_target
+            if stop_target == 0 or stop_target == self.num_floors - 1:
+                # cannot go past ground or top floor
+                return (ElevatorState.STOP,)
+            
+            # cannot continue if passenger wants to get off at current stop target
+            if stop_target in elevator_state.car_calls():
+                return (ElevatorState.STOP,)
+            # no passenger wants to get on or off next floor -> force continue
+            if (not elevator_state.is_passenger_next_floor(self.floors, amount=amount) or
+                    elevator_state.is_full()):
+                return (ElevatorState.CONTINUE,)
 
-        if elevator_state.status == ElevatorState.FULL_SPEED:
-            if elevator_dist >= const.ACCEL_DECISION_DIST - const.GENERAL_EPS:
-                stop_target = elevator_state.next_floor(self.floors, amount=2).level
-                elevator_state.stop_target = stop_target
-                if (stop_target in elevator_state.car_calls() or
-                    elevator_state.is_passenger_next_floor(self.floors, amount=2)):
-                    # passenger wants to go to next floor or passenger at next floor -> force stop action
-                    return (ElevatorState.STOP,)
-                else:
-                    return (ElevatorState.STOP, ElevatorState.CONTINUE)
-        
+            return (ElevatorState.STOP, ElevatorState.CONTINUE)
+            
         return ()
 
     def process_actions(self, simulator):
@@ -264,8 +261,11 @@ class Environment:
             # a constrained decision is made
             if len(possible_actions) == 1:
                 simulator.insert(events.ElevatorActionEvent(simulator.now(), elevator, possible_actions[0]))
+                logger.debug('time:%.3f:possible actions: %s', simulator.now(), const.MAP_CONST_STR[possible_actions[0]])
             elif len(possible_actions) == 2:
                 simulator.insert(events.ElevatorControlEvent(simulator.now(), elevator))
+                logger.debug('time:%.3f:possible actions: (%s, %s)', simulator.now(), const.MAP_CONST_STR[possible_actions[0]],
+                             const.MAP_CONST_STR[possible_actions[1]])
 
     def complete_actions(self, simulator):
         for elevator in self.elevators:
@@ -326,7 +326,7 @@ class Environment:
             self.num_floors, self.num_elevators, self.traffic_profile)
 
 
-class ElevatorState:
+class ElevatorState(object):
     """
     Represents state of an elevator.
 
@@ -359,8 +359,10 @@ class ElevatorState:
         containing ?
     decision_time : float
         time at which last decision was made
-    decision_made : bool
-        true if a decision was made (?)
+    accelerating_decision_made : bool
+        true if a stop/continue decision at acceleration was made
+    full_speed_decision_made : bool
+        true if a stop/continue decision at full was made
     stop_target : int
         floor number of floor to stop at if action is stop
     """
@@ -376,6 +378,7 @@ class ElevatorState:
     ACCEL_DECELERATING = 5  # decelerating after just accelerating
     FULL_SPEED = 6  # moving at full speed
     BOARDING = 7  # stopped at floor and passengers are getting in/out
+    DONE_BOARDING = 13  # last passenger has boarded
 
     # elevator actions
     STOP = 8
@@ -386,35 +389,58 @@ class ElevatorState:
 
     num_elevators = 0
 
-    def __init__(self, environment, controller=RandomAgent(), floor=0, direction=None,
+    def __init__(self, environment, controller=BestFirstAgent(), floor=0, direction=None,
                  current_action=None, capacity=20, status=None, constrained=False,
                  acc=0, vel=0, pos=0, history=None, decision_time=None, decision_made=False):
         self.id = ElevatorState.num_elevators
         ElevatorState.num_elevators += 1
         self.environment = environment
         self.controller = controller
-        self.floor = floor
+        self._floor = floor
         self.direction = direction if direction else ElevatorState.STOPPED
-        self.current_action = current_action if current_action else ElevatorState.NO_ACTION
+        self._current_action = current_action if current_action else ElevatorState.NO_ACTION
         self.capacity = capacity
         self.passengers = {i: [] for i in range(self.environment.num_floors)}
-        self.status = status if status else ElevatorState.IDLE
+        self._status = status if status else ElevatorState.IDLE
         self.constrained = constrained
         self.motion = ElevatorMotion(self, acc, vel, pos)
         self.history = history if history else []
         self.decision_time = decision_time
-        self.decision_made = decision_made
+        # TODO: UPDATE DECISION TIME WHEN DECISION IS MADE
+        self.accelerating_decision_made = False
+        self.full_speed_decision_made = False
         self.stop_target = -1
+
+    @property
+    def floor(self):
+        return self._floor
+
+    @floor.setter
+    def floor(self, value):
+        self._floor = value
+        logger.info('elevator %d reaches floor %d', self.id, value)
+
+    @property
+    def status(self):
+        return self._status
+
+    @status.setter
+    def status(self, value):
+        self._status = value
+        logger.info('elevator %d status changes to %s', self.id, const.MAP_CONST_STR[value])
+
+    @property
+    def current_action(self):
+        return self._current_action
+
+    @current_action.setter
+    def current_action(self, value):
+        self._current_action = value
+        logger.info('elevator %d current action changes to %s', self.id, const.MAP_CONST_STR[value])
 
     def is_constrained(self):
         """Return True if current action choice was constrained."""
         return self.constrained
-
-    def is_decision_made(self):
-        """
-        Return True if elevator has made a decision at the moment
-        """
-        return self.decision_made
 
     def capacity_left(self):
         """
@@ -482,9 +508,8 @@ class ElevatorState:
             number of floors to look ahead
         """
         next_floor = self.next_floor(floors, amount)
-        # if self.direction == ElevatorState.UP:
-        return next_floor.num_up() + next_floor.num_down() > 0
-        # else:
+        return next_floor.has_passengers()
+
 
     def next_floor(self, floors, amount=1):
         """
@@ -492,6 +517,8 @@ class ElevatorState:
         
         Parameters
         ----------
+        floors : list
+            list of floor objects in increasing order
         amount : int
             number of floors to look ahead
 
@@ -500,7 +527,19 @@ class ElevatorState:
         floor object
             next (amount) floor
         """
+        assert 0 <= self.floor + self.direction * amount <= len(floors), 'next_floor checked on non-existing floor'
         return floors[self.floor + self.direction * amount]
+
+    def is_decision_point(self, environment):
+        """
+        Return True if elevator reaches decision point.
+        """
+        last_floor_pos = environment.floors[self.floor].pos
+        elevator_dist = abs(self.motion.pos - last_floor_pos)
+        return ((self.status == ElevatorState.ACCELERATING and not self.accelerating_decision_made and
+                 elevator_dist >= const.ACCEL_DECISION_DIST - const.GENERAL_EPS) or
+                (self.status == ElevatorState.FULL_SPEED and not self.full_speed_decision_made and
+                 elevator_dist >= const.FULL_SPEED_DECISION_DIST - const.GENERAL_EPS))
 
     def num_passengers(self):
         """
@@ -509,6 +548,28 @@ class ElevatorState:
         res = 0
         for _, passengers in self.passengers.items():
             res += len(passengers)
+
+        return res
+
+    def num_passengers_up(self):
+        """
+        Return number of passengers going up in the elevator.
+        """
+        res = 0
+        for _, passengers in self.passengers.items():
+            if passengers and passengers[0].going_up(): 
+                res += len(passengers)
+
+        return res
+
+    def num_passengers_down(self):
+        """
+        Return number of passengers going up in the elevator.
+        """
+        res = 0
+        for _, passengers in self.passengers.items():
+            if passengers and passengers[0].going_down(): 
+                res += len(passengers)
 
         return res
 
@@ -533,14 +594,20 @@ class ElevatorState:
         Update elevator state. Called by the environment every simulator loop.
         """
         self.motion.update(simulator)
-        if self.motion.vel >= const.MAX_SPEED - const.GENERAL_EPS:
+        if (abs(self.motion.vel) >= const.MAX_SPEED - const.GENERAL_EPS and
+            not (self.status == ElevatorState.FULL_SPEED or
+                 self.status == ElevatorState.FULL_SPEED_DECELERATING)):
             self.status = ElevatorState.FULL_SPEED
-            self.motion.vel = const.MAX_SPEED
+            self.motion.vel = self.direction * const.MAX_SPEED
 
         # update elevator's floor when it crosses the floor
         if abs(self.motion.pos - simulator.environment.floors[self.floor].pos) >= const.FLOOR_HEIGHT - const.GENERAL_EPS:
             self.floor = self.next_floor(simulator.environment.floors).level
             self.motion.pos = simulator.environment.floors[self.floor].pos
+            # if no stop action was taken, reset decision made variables
+            if not (self.status == ElevatorState.ACCEL_DECELERATING or self.status == ElevatorState.FULL_SPEED_DECELERATING): 
+                self.accelerating_decision_made = False
+                self.full_speed_decision_made = False
 
     def observe(self, simulator):
         # position and action checks
@@ -556,38 +623,64 @@ class ElevatorState:
         action : int
             action elevator is taking
         """
+        self.motion.reference_time = simulator.now()
+        self.current_action = action
         if action == ElevatorState.MOVE_UP:
             self.direction = ElevatorState.UP
             self.status = ElevatorState.ACCELERATING
-            logger.info('elevator %d status set to accelerating (up)', self.id)
         elif action == ElevatorState.MOVE_DOWN:
             self.direction = ElevatorState.DOWN
             self.status = ElevatorState.ACCELERATING
-            logger.info('elevator %d status set to accelerating (down)', self.id)
         elif action == ElevatorState.STOP:
             logger.info('elevator %d plans to stop at floor %d', self.id, self.stop_target)
             if self.status == ElevatorState.FULL_SPEED:
                 self.status = ElevatorState.FULL_SPEED_DECELERATING
-                logger.info('elevator %d status set to decelerating from full speed', self.id)
-            else:
+                self.full_speed_decision_made = True
+            elif self.status == ElevatorState.ACCELERATING:
                 self.status = ElevatorState.ACCEL_DECELERATING
-                logger.info('elevator %d status set to decelerating from accelerating', self.id)
+                self.accelerating_decision_made = True
+        elif self.current_action == ElevatorState.CONTINUE:
+            if self.status == ElevatorState.FULL_SPEED:
+                self.full_speed_decision_made = True
+            elif self.status == ElevatorState.ACCELERATING:
+                self.accelerating_decision_made = True
 
     def complete_action(self, simulator):
         """
         Complete an action by updating elevator status.
         """
-        if self.current_action == ElevatorState.STOP and self.floor == self.stop_target:
         # elevator arrives at floor
-            self.status = ElevatorState.BOARDING
-            self.current_action == ElevatorState.NO_ACTION
-            simulator.environment.floors[self.floor].board_passengers(simulator, self)
-            # TODO: adjust dacc so that it is 0 whenever boarding
+        floor = simulator.environment.floors[self.floor]
+        if self.current_action == ElevatorState.STOP and self.floor == self.stop_target:
+            self.arrive_at_floor(simulator, floor)
         elif self.current_action == ElevatorState.MOVE_UP or self.current_action == ElevatorState.MOVE_DOWN:
-            self.current_action == ElevatorState.NO_ACTION
+            self.current_action = ElevatorState.NO_ACTION
+        elif self.current_action == ElevatorState.CONTINUE:
+            self.current_action = ElevatorState.NO_ACTION
         
         # TODO: ADD TIME TO BOARD PASSENGERS
-        # TODO: DIFFERENT WAY TO INDICATE ACTION IN PROGRESS
+
+    def arrive_at_floor(self, simulator, floor):
+        """
+        Update environment when elevator stops at floor `floor'.
+
+        Parameters
+        ----------
+        floor :
+            floor object at which elevator stops
+        """
+        self.status = ElevatorState.BOARDING
+        if floor.has_passengers() or self.is_passenger_getting_off():
+            floor.board_passengers(simulator, self)
+        else:
+            simulator.insert(events.DoneBoardingEvent(simulator.now(), self))
+        self.current_action = ElevatorState.NO_ACTION
+        self.full_speed_decision_made = False
+        self.accelerating_decision_made = False
+
+    def is_passenger_getting_off(self):
+        """Return True if elevator has arrived at car called floor."""
+        return bool(self.passengers[self.floor])
 
     def is_action_in_progress(self):
         return self.current_action != ElevatorState.NO_ACTION
@@ -618,13 +711,13 @@ class ElevatorState:
         logger.debug('environment reset')
 
     def __repr__(self):
-        return 'ElevatorState(environment, controller={}, floor={}, direction={},\
-current_action={}, capacity={}, action_in_progress={},\
-status={}, constrained={}, acc={}, vel={}, pos={}, decision_time={},\
-decision_made={})'.format(self.controller, self.floor, self.direction,
-                 self.current_action, self.capacity, self.is_action_in_progress(), self.status,
-                 self.constrained, self.motion.acc, self.motion.vel, self.motion.pos, self.decision_time,
-                 self.decision_made)
+        return 'ElevatorState(environment, controller={}, floor={}, direction={}, \
+current_action={}, capacity={}, action_in_progress={}, \
+status={}, constrained={}, acc={}, vel={}, pos={}, decision_time={}, \
+accelerating_decision_made={}, full_speed_decision_made={})'.format(self.controller, self.floor, const.MAP_CONST_STR[self.direction],
+                 const.MAP_CONST_STR[self.current_action], self.capacity, self.is_action_in_progress(),
+                 const.MAP_CONST_STR[self.status], self.constrained, self.motion.acc, self.motion.vel,
+                 self.motion.pos, self.decision_time, self.accelerating_decision_made, self.full_speed_decision_made)
 
 
 class ElevatorMotion:
@@ -703,21 +796,28 @@ class ElevatorMotion:
         the direction is STOPPED.
         """
         if (self.elevator_state.status == ElevatorState.IDLE or
-            self.elevator_state.direction == ElevatorState.STOPPED or
-                self.elevator_state.status == ElevatorState.FULL_SPEED):
+            self.elevator_state.status == ElevatorState.BOARDING):
             self.acc = 0
+            self.vel = 0
+        elif self.elevator_state.status == ElevatorState.FULL_SPEED:
+            self.acc = 0
+            self.vel = self.elevator_state.direction * const.MAX_SPEED
         else:
             self.acc += self.elevator_state.direction * self.dacc(simulator)
 
         self.vel += self.dvel(simulator)
         self.pos += self.dpos(simulator)
 
+        if round(simulator.now(), 2) % 1 == 0:
+            logger.debug('time:%.3f:elevator %d motion - acc:%.3f vel:%.3f pos:%.3f', simulator.now(), self.elevator_state.id,
+                        self.acc, self.vel, self.pos)
+
     def __repr__(self):
         return 'ElevatorMotion(elevator_state, acc={}, vel={}, pos={}, reference_time={})'.format(
             self.acc, self.vel, self.pos, self.reference_time)
 
 
-class Floor:
+class Floor(object):
     """
     Represents a floor in a building.
 
@@ -743,8 +843,28 @@ class Floor:
         self.pos = const.FLOOR_HEIGHT * self.level
         self.passengers_up = []
         self.passengers_down = []
-        self.up = False
-        self.down = False
+        self._up = False
+        self._down = False
+
+    @property
+    def up(self):
+        return self._up
+    
+    @up.setter
+    def up(self, value):
+        self._up = value
+        msg = 'on' if value else 'off' 
+        logger.info('up button on floor %d turns %s', self.level, msg)
+
+    @property
+    def down(self):
+        return self._down
+    
+    @down.setter
+    def down(self, value):
+        self._down = value
+        msg = 'on' if value else 'off' 
+        logger.info('down button on floor %d turns %s', self.level, msg)
 
     def add_passenger(self, passenger):
         """
@@ -790,7 +910,10 @@ class Floor:
         """
         return len(self.passengers_down)
 
-    def update_button(self, passenger=True, target=None, elevator_direction=None):
+    def has_passengers(self):
+        return self.num_waiting() > 0
+
+    def update_button(self, passenger=True, target=None, elevator_state=None):
         """
         Update button state given an arriving passenger or arriving elevator
 
@@ -805,24 +928,15 @@ class Floor:
         target : int
             if button is updated by passenger arriving, indicates target floor
 
-        elevator_direction : int
-            indicates direction if arriving elevator
+        elevator_state : int
+            state of arriving elevator
         """
         # if no passengers: button - false -> true, if passengers already: true -> true
         if passenger:
             if target < self.level and not self.down:
                 self.down = True
-                logger.info('down button %d turns on', self.level)
             elif target > self.level and not self.up:
                 self.up = True
-                logger.info('up button %d turns on', self.level)
-        else:
-            if elevator_direction == ElevatorState.UP:
-                self.up = False
-                logger.info('up button %d turns off', self.level)
-            else:
-                self.down = False
-                logger.info('down button %d turns off', self.level)
 
     def get_buttons(self):
         """
@@ -854,33 +968,53 @@ class Floor:
         Called when elevator stops at floor.
         """
         now = simulator.now()
+        boarding_time = 0
+        # TODO: INCLUDE BOARDING TIME FOR PASSENGERS GETTING OFF
+        # TODO: WHICH PASSENGER BOARDING DIRECTION DEPENDS ON ELEVATOR PASSENGERS AS WELL
         passengers_off = elevator_state.passengers[elevator_state.floor]
         for passenger in passengers_off:
-            # TODO: MAKE SURE THIS IS DONE AFTER ELEVATOR FLOOR HAS BEEN UPDATED CORRECTLY
             simulator.insert(events.PassengerTransferEvent(now, passenger, elevator_state, to_elevator=False))
         capacity_left = elevator_state.capacity_left() + len(passengers_off)
+        num_up = self.num_up()
+        num_down = self.num_down()
+        passengers_boarding = None
+        # TODO: WHEN ELEVATOR REACHES TOP OR BOTTOM FLOOR, CHANGE DIRECTION TO ?STOPPED?
         if elevator_state.direction == ElevatorState.UP:
-            if capacity_left < self.num_up():
-                passengers_boarding = self.passengers_up[:capacity_left]
-                # del self.passengers_up[:capacity_left]
-            else:
-                passengers_boarding = self.passengers_up[:]
-                # del self.passengers_up[:]
+            if num_up > 0:
+                if capacity_left < num_up:
+                    passengers_boarding = self.passengers_up[:capacity_left]
+                else:
+                    passengers_boarding = self.passengers_up[:]
+                    simulator.environment.floors[elevator_state.floor].up = False
+            # elif num_down > 0 and not simulator.environment.is_hall_call(elevator_state.floor, above=True, down_up=True):
+            elif num_down > 0 and elevator_state.num_passengers_up() == 0:
+                if capacity_left < num_down:
+                    passengers_boarding = self.passengers_down[:capacity_left]
+                else:
+                    passengers_boarding = self.passengers_down[:]
+                    simulator.environment.floors[elevator_state.floor].down = False
+        elif elevator_state.direction == ElevatorState.DOWN:
+            if num_down > 0:
+                if capacity_left < num_down:
+                    passengers_boarding = self.passengers_down[:capacity_left]
+                else:
+                    passengers_boarding = self.passengers_down[:]
+                    simulator.environment.floors[elevator_state.floor].down = False
+            elif num_down > 0 and elevator_state.num_passengers_down() == 0:
+                if capacity_left < num_up:
+                    passengers_boarding = self.passengers_up[:capacity_left]
+                else:
+                    passengers_boarding = self.passengers_up[:]
+                    simulator.environment.floors[elevator_state.floor].up = False
+
+        loop = 0
+        if passengers_boarding:
+            for loop, passenger in enumerate(passengers_boarding):
+                # TODO: time from truncated erlang instead of 1 second
+                simulator.insert(events.PassengerTransferEvent(now + loop + 1, passenger, elevator_state, to_elevator=True))
+            simulator.insert(events.DoneBoardingEvent(now + loop + 1 + const.GENERAL_EPS, elevator_state))
         else:
-            if capacity_left < self.num_down():
-                passengers_boarding = self.passengers_down[:capacity_left]
-                # del self.passengers_down[:capacity_left]
-            else:
-                passengers_boarding = self.passengers_down[:]
-                # del self.passengers_down[:]
-
-        now = simulator.now()
-        for i, passenger in enumerate(passengers_boarding):
-            # TODO: time from truncated erlang instead of 1 second
-            simulator.insert(events.PassengerTransferEvent(now + i + 1, passenger, elevator_state, to_elevator=True))
-
-        simulator.insert(events.DoneBoardingEvent(now + i + 1 + const.GENERAL_EPS, elevator_state))
-        # elevator_state.add_passengers(passengers_boarding)
+            simulator.insert(events.DoneBoardingEvent(now, elevator_state))
 
     def reset(self):
         self.passengers_up = []
@@ -947,9 +1081,10 @@ class Passenger:
         self.id = Passenger.num_passengers_total
         Passenger.num_passengers_total += 1
         self.floor = floor
+        self.arrival_time = None
 
     def arrive_at_floor(self, simulator):
-        logger.info('passenger %d arrives at floor %d', self.id, self.floor.level)
+        logger.info('time:%.3f:passenger %d arrives at floor %d', simulator.now(), self.id, self.floor.level)
         self.arrival_time = simulator.now()
         self.target = self.choose_target(simulator.environment)
         self.floor.add_passenger(self)
@@ -1031,15 +1166,15 @@ class Action:
 
 
 class TrafficProfile(ABC):
-    def __init__(self, num_floors, interfloor=0):
-        """
-        Base class for traffic profiles such as DownPeak, UpPeak, etc.
+    """
+    Base class for traffic profiles such as DownPeak, UpPeak, etc.
 
-        Attributes
-        ----------
-        interfloor : float
-            \in [0, 1], percentage of interfloor travel in terms of total arrival rate
-        """
+    Attributes
+    ----------
+    interfloor : float
+        \in [0, 1], percentage of interfloor travel in terms of total arrival rate
+    """
+    def __init__(self, num_floors, interfloor=0):
         self.num_floors = num_floors
         self.interfloor = interfloor
 
@@ -1049,22 +1184,24 @@ class TrafficProfile(ABC):
 
 
 class DownPeak(TrafficProfile):
-    def __init__(self, num_floors, interfloor=0):
-        """
-        Attributes
-        ----------
-        target_floor : int
-            floor to which most passengers are headed
-        arrival_rates: tuple
-            mean number of passengers during a typical afternoon business hour
-        """
+    """
+    Represents a downpeak traffic profile.
+
+    Attributes
+    ----------
+    target_floor : int
+        floor to which most passengers are headed
+    arrival_rates: tuple
+        mean number of passengers during a typical afternoon business hour
+    """
+    def __init__(self, num_floors, interfloor=0.5):
         super().__init__(num_floors, interfloor)
         self.target_floor = 0
 
     def choose_target(self, floor):
         # with prob `interfloor' choose floor != target else choose target
         if rnd.rand() < self.interfloor:
-            possible_floors = [pos_floor for pos_floor in range(self.num_floors) if pos_floor not in (0, floor)]
+            possible_floors = [pos_floor for pos_floor in range(self.num_floors) if pos_floor not in (0, floor.level)]
             target = rnd.choice(possible_floors)
         else:
             target = self.target_floor

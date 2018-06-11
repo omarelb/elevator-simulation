@@ -94,6 +94,10 @@ class PassengerTransferEvent(Event):
         else:
             self.passenger.exit_elevator(self.elevator_state)
 
+    def __repr__(self):
+        return 'PassengerTransferEvent(time={:.3f}, passenger={}, to_elevator={})'.format(
+            self.time, self.passenger.id, self.to_elevator)
+
 
 class DoneBoardingEvent(Event):
     def __init__(self, time, elevator_state):
@@ -103,7 +107,11 @@ class DoneBoardingEvent(Event):
     def execute(self, simulator):
         if self.elevator_state.is_empty() and simulator.environment.no_buttons_pressed():
             self.elevator_state.status = env.ElevatorState.IDLE
-        self.elevator_state.current_action = env.ElevatorState.NO_ACTION
+        else:
+            self.elevator_state.status = env.ElevatorState.DONE_BOARDING
+
+    def __repr__(self):
+        return 'DoneBoardingEvent(time={:.3f})'.format(self.time)
 
 
 class HallCallEvent(Event):
@@ -148,7 +156,7 @@ class ElevatorActionEvent(Event):
         self.elevator_state.do_action(simulator, self.action)
 
     def __repr__(self):
-        return 'ElevatorActionEvent(time={}, elevator_state, action={})'.format(self.time, self.action)
+        return 'ElevatorActionEvent(time={}, elevator_state={}, action={})'.format(self.time, self.elevator_state, const.MAP_CONST_STR[self.action])
 
 
 class ElevatorControlEvent(Event):
@@ -167,3 +175,6 @@ class ElevatorControlEvent(Event):
         action = self.elevator_state.controller.get_action(simulator)
 
         simulator.insert(ElevatorActionEvent(simulator.now(), self.elevator_state, action))
+
+    def __repr__(self):
+        return 'ElevatorControlEvent(time={:.3f})'.format(self.time)
