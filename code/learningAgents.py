@@ -13,17 +13,33 @@
 
 # from game import Directions, Agent, Actions
 
-import random,util,time
+import random
+import time
+import math
+import util
+import pickle
+import shutil  # copying iostream to file
+
 
 class Agent:
     """
     An agent must define a get_action method, but may also define the
     following methods which will be called if they exist:
 
-    def register_initial_state(self, state): # inspects the starting state
+    Attributes
+    ----------
+    index : int
+        agent identifier
+    decision_time : float
+        simulated time at which a decision was last made
+    cost_accumulator : float
+        cost the agent has accumulated from last decision time until now
     """
     def __init__(self, index=0):
         self.index = index
+        self.decision_time = 0
+        # cost accumulator for an elevator.
+        self.cost_accumulator = 0
 
     def get_action(self, simulator):
         """
@@ -32,34 +48,46 @@ class Agent:
         """
         util.raiseNotDefined()
 
+    def start_episode(self):
+        """
+          Called by environment when new episode is starting
+        """
+        self.last_state = None
+        self.last_action = None
+        self.episode_rewards = 0.0
+
+
 class ValueEstimationAgent(Agent):
     """
-      Abstract agent which assigns values to (state,action)
-      Q-Values for an environment. As well as a value to a
-      state and a policy given respectively by,
+    Abstract agent which assigns values to (state,action)
+    Q-Values for an environment. As well as a value to a
+    state and a policy given respectively by,
 
-      V(s) = max_{a in actions} Q(s,a)
-      policy(s) = arg_max_{a in actions} Q(s,a)
+    V(s) = max_{a in actions} Q(s,a)
+    policy(s) = arg_max_{a in actions} Q(s,a)
 
-      Both ValueIterationAgent and QLearningAgent inherit
-      from this agent. While a ValueIterationAgent has
-      a model of the environment via a MarkovDecisionProcess
-      (see mdp.py) that is used to estimate Q-Values before
-      ever actually acting, the QLearningAgent estimates
-      Q-Values while acting in the environment.
+    Both ValueIterationAgent and QLearningAgent inherit
+    from this agent. While a ValueIterationAgent has
+    a model of the environment via a MarkovDecisionProcess
+    (see mdp.py) that is used to estimate Q-Values before
+    ever actually acting, the QLearningAgent estimates
+    Q-Values while acting in the environment.
     """
-
-    def __init__(self, alpha=1.0, epsilon=0.05, gamma=0.8, num_training = 10):
+    def __init__(self, beta=0.01, num_training=10):
         """
-        Sets options, which can be passed in via the Pacman command line using -a alpha=0.5,...
-        alpha    - learning rate
-        epsilon  - exploration rate
-        gamma    - discount factor
-        num_training - number of training episodes, i.e. no learning after these many episodes
+        Parameters
+        ----------
+        alpha : float
+            learning rate
+        beta : float
+            continuous analog of discounting factor gamma
+        temperature : float
+            controls randomness of action selection
+        num_training : int
+            number of training episodes, i.e. no learning after these many episodes
         """
-        self.alpha = float(alpha)
-        self.epsilon = float(epsilon)
-        self.discount = float(gamma)
+        # self.alpha = float(alpha)
+        self.beta = float(beta)
         self.num_training = int(num_training)
 
     ####################################
@@ -100,115 +128,84 @@ class ValueEstimationAgent(Agent):
         """
         util.raiseNotDefined()
 
+
 class ReinforcementAgent(ValueEstimationAgent):
     """
-      Abstract Reinforcemnt Agent: A ValueEstimationAgent
-            which estimates Q-Values (as well as policies) from experience
-            rather than a model
+    Abstract Reinforcement Agent: A ValueEstimationAgent
+        which estimates Q-Values (as well as policies) from experience
+        rather than a model
 
-        What you need to know:
-                    - The environment will call
-                      observe_transition(state,action,next_state,delta_reward),
-                      which will call update(state, action, next_state, delta_reward)
-                      which you should override.
-        - Use self.get_legal_actions(state) to know which actions
-                      are available in a state
+    The environment will call
+    observe_transition(state,action,next_state,delta_reward),
+    which will call update(state, action, next_state, delta_reward)
+    which you should override.
+
+    Use self.get_legal_actions(state) to know which actions are available in a state
     """
-    ####################################
-    #    Override These Functions      #
-    ####################################
-
-    def update(self, state, action, next_state, reward):
+    def __init__(self, beta=0.01, **args):
         """
-                This class will call this function, which you write, after
-                observing a transition and reward
+        Parameters
+        ----------
+        alpha : float
+            learning rate
+        beta : float
+            continuous analog of discounting factor gamma
+        num_training : int
+            number of training episodes, i.e. no learning after these many episodes
+        """
+        temperature_end = 0.01
+        self.annealing_factor = args['annealing_factor']
+        self.is_training = args['is_training']
+        self.num_training = int(math.log(temperature_end / 2, self.annealing_factor))
+        self.episodes_so_far = 0
+        self.accum_train_rewards = 0.0
+        self.accum_test_rewards = 0.0
+        # self.start_alpha = float(start_alpha)
+        self.beta = float(beta)
+        self.use_q_file = args['use_q_file']
+        self.q_file = args['q_file']
+        self.qvalues = None
+
+    def update(self, state, action, delta_reward):
+        """
+        This class will call this function after observing a transition and reward.
         """
         util.raiseNotDefined()
 
-    ####################################
-    #    Read These Functions          #
-    ####################################
-
-    def get_legal_actions(self,state):
+    def observe_transition(self, state, action, delta_reward):
         """
-          Get the actions available for a given
-          state. This is what you should use to
-          obtain legal actions for a state
-        """
-        return self.action_fn(state)
-
-    def observe_transition(self, state, action, next_state, delta_reward):
-        """
-            Called by environment to inform agent that a transition has
-            been observed. This will result in a call to self.update
-            on the same arguments
-
-            NOTE: Do *not* override or call this function
+        Called by environment to inform agent that a transition has
+        been observed. This will result in a call to self.update
+        on the same arguments
         """
         self.episode_rewards += delta_reward
-        self.update(state, action, next_state, delta_reward)
-
-    def start_episode(self):
-        """
-          Called by environment when new episode is starting
-        """
-        self.last_state = None
-        self.last_action = None
-        self.episode_rewards = 0.0
+        self.update(state, action, delta_reward)
 
     def stop_episode(self):
         """
-          Called by environment when episode is done
+        Called by environment when episode is done.
         """
-        if self.episodes_so_far < self.num_training:
+        if self.is_training:
             self.accum_train_rewards += self.episode_rewards
         else:
             self.accum_test_rewards += self.episode_rewards
         self.episodes_so_far += 1
-        if self.episodes_so_far >= self.num_training:
-            # Take off the training wheels
-            self.epsilon = 0.0    # no exploration
-            self.alpha = 0.0      # no learning
+        # TODO: IF MULTIPLE ELEVATORS, MAKE SURE THIS ONLY GETS CALLED ONCE
 
-    def is_in_training(self):
-        return self.episodes_so_far < self.num_training
-
-    def is_in_testing(self):
-        return not self.is_in_training()
-
-    def __init__(self, action_fn = None, num_training=100, epsilon=0.5, alpha=0.5, gamma=1):
+    def temperature(self):
         """
-        action_fn: Function which takes a state and returns the list of legal actions
-
-        alpha    - learning rate
-        epsilon  - exploration rate
-        gamma    - discount factor
-        num_training - number of training episodes, i.e. no learning after these many episodes
+        Return boltzmann temperature as a function of which episode of training we're in.
         """
-        if action_fn == None:
-            action_fn = lambda state: state.get_legal_actions()
-        self.action_fn = action_fn
-        self.episodes_so_far = 0
-        self.accum_train_rewards = 0.0
-        self.accum_test_rewards = 0.0
-        self.num_training = int(num_training)
-        self.epsilon = float(epsilon)
-        self.alpha = float(alpha)
-        self.discount = float(gamma)
+        return 2 * self.annealing_factor**self.episodes_so_far
 
-    ################################
-    # Controls needed for Crawler  #
-    ################################
-    def set_epsilon(self, epsilon):
-        self.epsilon = epsilon
+    def alpha(self):
+        """
+        Return update step-size as a function of which episode of training we're in.
+        """
+        # TODO: MAYBE CHANGE 0.01 TO START_ALPHA PARAMETER
+        return 0.01 * 0.99975**self.episodes_so_far
 
-    def set_learning_rate(self, alpha):
-        self.alpha = alpha
-
-    def set_discount(self, discount):
-        self.discount = discount
-
-    def do_action(self,state,action):
+    def do_action(self, state, action):
         """
             Called by inherited class when
             an action is taken in a state
@@ -216,59 +213,57 @@ class ReinforcementAgent(ValueEstimationAgent):
         self.last_state = state
         self.last_action = action
 
-    ###################
-    # Pacman Specific #
-    ###################
-    def observation_function(self, state):
-        """
-            This is where we ended up after our last action.
-            The simulation should somehow ensure this is called
-        """
-        if not self.last_state is None:
-            reward = state.get_score() - self.last_state.get_score()
-            self.observe_transition(self.last_state, self.last_action, state, reward)
-        return state
-
     def register_initial_state(self, state):
         self.start_episode()
         if self.episodes_so_far == 0:
             print('Beginning %d episodes of Training' % (self.num_training))
 
-    def final(self, state):
+    def final(self, stream):
         """
-          Called by Pacman game at the terminal state
+        Called by environment at the terminal state
+
+        Parameters
+        ----------
+        stream : StringIO
+            containing passenger statistics in csv format. to be written to file
         """
-        delta_reward = state.get_score() - self.last_state.get_score()
-        self.observe_transition(self.last_state, self.last_action, state, delta_reward)
         self.stop_episode()
+        if self.use_q_file and self.is_training:
+            with open(self.q_file, 'wb') as q_file:
+                pickle.dump((self.episodes_so_far, self.accum_train_rewards, self.qvalues), q_file)
+        with open(join('data', 'passenger_statistics.csv'), 'a') as f:
+            shutil.copyfileobj(stream, f)
+        # TODO: Parameterize data_dir and csv filename depending on training, etc.
 
         # Make sure we have this var
-        if not 'episode_start_time' in self.__dict__:
+        if 'episode_start_time' not in self.__dict__:
             self.episode_start_time = time.time()
-        if not 'last_window_accum_rewards' in self.__dict__:
+        if 'last_window_accum_rewards' not in self.__dict__:
             self.last_window_accum_rewards = 0.0
-        self.last_window_accum_rewards += state.get_score()
+        # self.last_window_accum_rewards += state.get_score()
+        # TODO: COMPUTE STATISTICS WHEN PASSENGER LEAVES ELEVATOR
 
-        NUM_EPS_UPDATE = 100
+        # TODO: REWRITE THIS
+        NUM_EPS_UPDATE = 50
         if self.episodes_so_far % NUM_EPS_UPDATE == 0:
-            print ('Reinforcement Learning Status:')
+            print('Reinforcement Learning Status:')
             window_avg = self.last_window_accum_rewards / float(NUM_EPS_UPDATE)
             if self.episodes_so_far <= self.num_training:
-                trainAvg = self.accum_train_rewards / float(self.episodes_so_far)
-                print ('\tCompleted %d out of %d training episodes' % (
-                       self.episodes_so_far,self.num_training))
-                print ('\tAverage Rewards over all training: %.2f' % (
-                        trainAvg))
+                train_avg = self.accum_train_rewards / float(self.episodes_so_far)
+                print('\tCompleted %d out of %d training episodes' % (
+                       self.episodes_so_far, self.num_training))
+                print('\tAverage Rewards over all training: %.2f' % (
+                        train_avg))
             else:
                 test_avg = float(self.accum_test_rewards) / (self.episodes_so_far - self.num_training)
-                print ('\tCompleted %d test episodes' % (self.episodes_so_far - self.num_training))
-                print ('\tAverage Rewards over testing: %.2f' % test_avg)
-            print ('\tAverage Rewards for last %d episodes: %.2f'  % (
+                print('\tCompleted %d test episodes' % (self.episodes_so_far - self.num_training))
+                print('\tAverage Rewards over testing: %.2f' % test_avg)
+            print('\tAverage Rewards for last %d episodes: %.2f'  % (
                     NUM_EPS_UPDATE, window_avg))
-            print ('\tEpisode took %.2f seconds' % (time.time() - self.episode_start_time))
+            print('\tEpisode took %.2f seconds' % (time.time() - self.episode_start_time))
             self.last_window_accum_rewards = 0.0
             self.episode_start_time = time.time()
 
         if self.episodes_so_far == self.num_training:
             msg = 'Training Done (turning off epsilon and alpha)'
-            print ('%s\n%s' % (msg,'-' * len(msg)))
+            print('%s\n%s' % (msg,'-' * len(msg)))

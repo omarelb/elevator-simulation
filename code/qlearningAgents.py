@@ -11,49 +11,47 @@
 # Student side autograding was added by Brad Miller, Nick Hay, and
 # Pieter Abbeel (pabbeel@cs.berkeley.edu).
 
+import logging
+import random
+import util
+import pickle
+import math
 
-# from game import *
+from os.path import join
+
+import environment as env
 from learningAgents import ReinforcementAgent
-# from featureExtractors import *
 
-import random, util, math
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
+file_handler = logging.FileHandler(join(const.LOG_DIR, 'learning.log'), mode='w')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
 
 
 class QLearningAgent(ReinforcementAgent):
     """
-      Q-Learning Agent
-
-      Functions you should fill in:
-        - compute_value_from_qvalues
-        - compute_action_from_qvalues
-        - get_qvalue
-        - get_action
-        - update
-
-      Instance variables you have access to
-        - self.epsilon (exploration prob)
-        - self.alpha (learning rate)
-        - self.discount (discount rate)
-
-      Functions you should use
-        - self.get_legal_actions(state)
-          which returns legal actions for a state
+    Q-Learning Agent
     """
     def __init__(self, **args):
         "You can initialize Q-values here..."
         ReinforcementAgent.__init__(self, **args)
-
-        # initialize them all to zero
-        # qvalues can be accessed through self.qvalues[(state, action)]
-        self.qvalues = util.Counter()
-        # cost accumulator for an elevator.
-        self.cost_accumulator = 0
+        if args['use_q_file']:
+            with open(args['q_file'], 'rb') as q_file:
+                self.episodes_so_far, self.accum_train_rewards, self.qvalues = pickle.load(q_file)
+            logger.info('initialized q values from file %s', args['q_file'])
+        else:
+            self.qvalues = util.Counter()
+            logger.info('initialized q values to 0')
 
     def get_qvalue(self, state, action):
         """
-          Returns Q(state,action)
-          Should return 0.0 if we have never seen a state
-          or the Q node value otherwise
+        Return Q(state,action).
+
+        Should return 0.0 if we have never seen a state
+        or the Q node value otherwise
         """
         return self.qvalues[(state, action)]
 
@@ -64,69 +62,58 @@ class QLearningAgent(ReinforcementAgent):
           there are no legal actions, which is the case at the
           terminal state, you should return a value of 0.0.
         """
-        possible_actions = self.get_legal_actions(state)
-        # if there are legal actions
-        if possible_actions:
-            return max([self.get_qvalue(state, action) for action in possible_actions])
-        # reached terminal state, return 0
-        return 0
+        possible_actions = (env.ElevatorState.STOP, env.ElevatorState.CONTINUE)
+        return min([self.get_qvalue(state, action) for action in possible_actions])
 
-    def compute_action_from_qvalues(self, state):
+    def compute_action_from_qvalues(self, learning_state):
         """
-          Compute the best action to take in a state.  Note that if there
-          are no legal actions, which is the case at the terminal state,
-          you should return None.
-        """
-        possible_actions = self.get_legal_actions(state)
-        # reached terminal state
-        if not possible_actions:
-            return None
-
-        qvalues = [self.get_qvalue(state, action) for action in possible_actions]
-        max_qvalue = max(qvalues)
-
-        # there are ties
-        if qvalues.count(max_qvalue) > 1:
-            tied = []
-
-            for action, qvalue in zip(possible_actions, qvalues):
-                if qvalue == max_qvalue:
-                    # append all tied actions to a list for choosing randomly later
-                    tied.append((action, max_qvalue))
-
-            # choose randomly from tied values
-            action, _ = random.choice(tied)
-
-            return action
+        Compute the best action to take in a state.
         
-        # there were no ties, return action that yields maximal q value
-        argmax_ix = qvalues.index(max(qvalues))
-        return possible_actions[argmax_ix]
+        Possible actions will always be a tuple (STOP, CONTINUE). Uses the boltzmann
+        distribution to compute the probability of stopping.
 
-    def get_action(self, state):
+        Parameters
+        ----------
+        learning_state : tuple
+            The learning state is mapped to an action by the learning agent.
+            It consists of, in the following order:
+                - the number of up hall calls above the elevator
+                - the number of down hall calls above the elevator
+                - the number of up hall calls below the elevator
+                - the number of down hall calls below the elevator
+                - the number of car calls in the current direction of the elevator
+                - current position (floor) of the elevator
+                - current direction of the elevator
         """
-          Compute the action to take in the current state.  With
-          probability self.epsilon, we should take a random action and
-          take the best policy action otherwise.  Note that if there are
-          no legal actions, which is the case at the terminal state, you
-          should choose None as the action.
+        possible_actions = (env.ElevatorState.STOP, env.ElevatorState.CONTINUE)
+        qvalues = [self.get_qvalue(learning_state, action) for action in possible_actions]
+        
+        # there are ties -> choose randomly
+        if qvalues[0] == qvalues[1]:
+            return random.choice(possible_actions)
 
-          HINT: You might want to use util.flip_coin(prob)
-          HINT: To pick randomly from a list, use random.choice(list)
+        if qvalues[0] < qvalues[1]:
+            return possible_actions[0]
+        return possible_actions[1]
+
+    def get_action(self, learning_state):
         """
-        # Pick Action
-        legal_actions = self.get_legal_actions(state)
-        # terminal state
-        if not legal_actions:
-            return None
+        Compute the action to take in the current learning state.
 
-        # choose an action randomly with probability epsilon
-        if util.flip_coin(self.epsilon):
-            # choose an action randomly
-            return random.choice(legal_actions)
-        return self.compute_action_from_qvalues(state)
+        If in training, will choose actions according to boltzmann distribution on
+        q values to keep exploring. Otherwise take actions with highest q value.
+        """
+        possible_actions = (env.ElevatorState.STOP, env.ElevatorState.CONTINUE)
+        qvalues = [self.get_qvalue(learning_state, action) for action in possible_actions]
 
-    def update(self, state, action, next_state, reward):
+        if self.is_in_training():
+            prob_stop = self.prob_stop(qvalues, self.temperature())
+            if rnd.rand() < prob_stop:
+                return env.ElevatorState.STOP
+            return env.ElevatorState.CONTINUE
+        return self.compute_action_from_qvalues(learning_state)
+
+    def update(self, state, action, reward):
         """
           The parent class calls this to observe a
           state = action => next_state and reward transition.
@@ -135,17 +122,7 @@ class QLearningAgent(ReinforcementAgent):
           NOTE: You should never call this function,
           it will be called on your behalf
         """
-        "*** YOUR CODE HERE ***"
-        next_legal_actions = self.get_legal_actions(next_state)
-
-        # if no next legal actions, we have run into terminal state, nextQ should be 0
-        max_next_q = 0
-        if next_legal_actions:
-            max_next_q = max([self.get_qvalue(next_state, next_action) for next_action in next_legal_actions])
-
-        sample = reward + self.discount * max_next_q
-
-        self.qvalues[(state, action)] = (1 - self.alpha) * self.get_qvalue(state, action) + self.alpha * sample
+        util.raiseNotDefined()
 
     def get_policy(self, state):
         return self.compute_action_from_qvalues(state)
@@ -153,11 +130,60 @@ class QLearningAgent(ReinforcementAgent):
     def get_value(self, state):
         return self.compute_value_from_qvalues(state)
 
+    def prob_stop(self, q_values, temperature):
+        """
+        Return the probability of stopping given the state's q values.
+
+        Parameters
+        ----------
+        q_values : tuple
+            first element is q value for stop, second element is q value for continue
+        temperature : float
+            the value of temperature controls the amount of randomness in the selection of actions.
+            a lower temperature means a lower amount of randomness.
+
+        Returns
+        -------
+        float
+            probability of choosing action stop
+        """
+        _, prob_stop = util.boltzmann(q_values, temperature)
+
+        return prob_stop
+
+    def prob_continue(self, q_values, temperature):
+        """
+        Return the probability of choosing continue given the state's q values.
+
+        Parameters
+        ----------
+        q_values : tuple
+            first element is q value for stop, second element is q value for continue
+        temperature : float
+            the value of temperature controls the amount of randomness in the selection of actions.
+            a lower temperature means a lower amount of randomness.
+
+        Returns
+        -------
+        float
+            probability of choosing action stop
+        """
+        return 1 - self.prob_stop(q_values, temperature)
+
 
 class ElevatorQAgent(QLearningAgent):
-    "Exactly the same as QLearningAgent, but with different default parameters"
+    """
+    Exactly the same as QLearningAgent, but with different default parameters.
+    
+    Parameters added
+    ----------
+    cost_accumulator : float:
+        keeps track of elevator's cost
+    decision_time : float
+        time at which last decision was made
+    """
 
-    def __init__(self, epsilon=0.05,gamma=0.8,alpha=0.2, num_training=0, **args):
+    def __init__(self, beta=0.01, **args):
         """
         These default parameters can be changed from the pacman.py command line.
         For example, to change the exploration rate, try:
@@ -168,94 +194,53 @@ class ElevatorQAgent(QLearningAgent):
         gamma    - discount factor
         num_training - number of training episodes, i.e. no learning after these many episodes
         """
-        args['epsilon'] = epsilon
-        args['gamma'] = gamma
-        args['alpha'] = alpha
-        args['num_training'] = num_training
-        self.index = 0  # This is always Pacman
+        # args['alpha'] = alpha
+        args['beta'] = beta
+        # self.index = 0  # This is always Pacman
         QLearningAgent.__init__(self, **args)
 
-    def get_action(self, state):
+    def get_action(self, learning_state):
         """
         Simply calls the get_action method of QLearningAgent and then
         informs parent of action for Pacman.  Do not change or remove this
         method.
         """
-        action = QLearningAgent.get_action(self, state)
-        self.do_action(state, action)
+        action = super().get_action(learning_state)
+        self.do_action(learning_state, action)
         return action
 
+    def update_accumulated_cost(self, simulator, current_event_time):
+        """
+        Update cost accumulator cost for elevator when some events happen.
+        """
+        result = 0
+        t_0 = simulator.environment.last_accumulator_event_time
+        t_1 = current_event_time
+        d = self.decision_time
+        b = self.beta
+        # TODO: DO NOT UPDATE FOR PASSENGER THAT HAS JUST ARRIVED
+        for passenger in simulator.environment.get_passengers_waiting():
+            w_0 = passenger.waiting_time(t_0)
+            w_1 = passenger.waiting_time(t_1)
+            part_0 = math.exp(-b * (t_0 - d)) * (2 / b**3 + 2 * w_0 / b**2 + w_0**2 / b)
+            part_1 = math.exp(-b * (t_1 - d)) * (2 / b**3 + 2 * w_1 / b**2 + w_1**2 / b)
+            result += part_0 - part_1
 
-# class ApproximateQAgent(PacmanQAgent):
-#     """
-#        ApproximateQLearningAgent
+        self.cost_accumulator += result
 
-#        You should only have to overwrite get_qvalue
-#        and update.  All other QLearningAgent functions
-#        should work as is.
-#     """
-#     def __init__(self, extractor='IdentityExtractor', **args):
-#         self.featExtractor = util.lookup(extractor, globals())()
-#         PacmanQAgent.__init__(self, **args)
-#         self.weights = util.Counter()
+    def update(self, now, next_state, reward):
+        """
+        The parent class calls this to observe a
+        state = action => next_state and reward transition.
+        You should do your Q-Value update here
 
-#     def getWeights(self):
-#         return self.weights
+        NOTE: You should never call this function,
+        it will be called on your behalf
+        """
+        possible_actions = (env.ElevatorState.STOP, env.ElevatorState.CONTINUE)
+        min_next_q = min([self.get_qvalue(next_state, action) for action in possible_actions])
 
-#     def get_qvalue(self, state, action):
-#         """
-#           Should return Q(state,action) = w * featureVector
-#           where * is the dotProduct operator
-#         """
-#         "*** YOUR CODE HERE ***"
-#         result = 0
-#         featureVector = self.featExtractor.getFeatures(state, action)
-#         weights = self.getWeights()
-#         for key, value in featureVector.iteritems():
-#             # print key, value
-#             result += weights[key] * value
+        sample = reward + math.exp(-self.beta * (now - self.decision_time)) * min_next_q
 
-#         # product of two counters returns dot product
-#         # print result
-#         return result
-
-
-#     def update(self, state, action, next_state, reward):
-#         """
-#            Should update your weights based on transition
-#         """
-#         next_legal_actions = self.get_legal_actions(next_state)
-        
-#         # print self.featExtractor.getFeatures(state, action)
-#         # exit()
-#         # if no next legal actions, we have run into terminal state, nextQ should be 0
-#         max_next_q = 0
-#         if next_legal_actions:
-#             nextQ = ([self.get_qvalue(next_state, next_action) for next_action in next_legal_actions])
-#             max_next_q = max(nextQ)
-#             # max_next_q = max([self.get_qvalue(next_state, next_action) for next_action in next_legal_actions])
-
-#         difference = reward + self.discount * max_next_q - self.get_qvalue(state, action)
-#         features = self.featExtractor.getFeatures(state, action).copy()
-#         for key, value in features.iteritems():
-#             # print key, value
-#             self.weights[key] += self.alpha * difference * value
-#         # print "legal_actions: {}\nreward: {}\ndiscount: {}\nalpha: {}\nQ(s, a): {}\nQ(s',a'): {}\nfeatures: {}\nweights: {}".format(
-#         #     next_legal_actions, reward, self.discount, self.alpha, self.get_qvalue(state, action), max_next_q,
-#         #     self.featExtractor.getFeatures(state, action), self.getWeights()
-#         # )
-#         # print 'difference: ', difference
-
-
-
-#     def final(self, state):
-#         "Called at the end of each game."
-#         # call the super-class final method
-#         PacmanQAgent.final(self, state)
-
-#         # did we finish training?
-#         if self.episodes_so_far == self.num_training:
-#             # you might want to print your weights here for debugging
-#             "*** YOUR CODE HERE ***"
-#             print(self.getWeights())
-#             pass
+        self.qvalues[(self.last_state, self.last_action)] = ((1 - self.alpha) * self.get_qvalue(self.last_state, self.last_action) +
+                                                             self.alpha * sample)

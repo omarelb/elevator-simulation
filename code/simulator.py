@@ -1,9 +1,10 @@
-from os.path import join
-
 import heapq
 import logging
-import numpy as np
+import configparser  # parse configuration files
 import numpy.random as rnd
+import os
+
+from os.path import join
 
 from environment import Environment, Floor, ElevatorState, Passenger
 import constants as const
@@ -37,25 +38,23 @@ class Simulator():
     max_time : float
         amount of time one episode should run for
     """
-    def __init__(self, time_step=const.TIME_STEP, events=None, seed=42, environment=None, max_time=100):
-        self.time_step = time_step
+    def __init__(self, time_step=const.TIME_STEP, seed=42, max_time=60 * 60, **kwargs):
+        # def __init__(self, **kwargs):
+        self.time_step = const.TIME_STEP
         self.time = 0
-        # could also be implemented as priority queue
-        self.events = events if events else []
+        self.events = []
         self.seed = seed
+        self.max_time = max_time
         rnd.seed(self.seed)
 
-        # TODO: parameterize this
-        self.environment = environment if environment else Environment()
-        
-        self.max_time = max_time  # seconds 60 * 60 seconds=1 hour
+        self.environment = Environment(kwargs['num_floors'], kwargs['num_elevators'], kwargs['traffic_profile'],
+                                       kwargs['interfloor'], kwargs['controller'])
 
-    def initialize_simulation(self):
+    def start_episode(self):
         """
         Start off the simulation by generating the first arrivals. No arrivals on ground floor.
         """
-        for floor in self.environment.floors[1:]:
-            events.PassengerArrivalEvent(self.now(), floor).generate(self)
+        self.environment.start_episode(self)
 
     def insert(self, event):
         """
@@ -84,16 +83,9 @@ class Simulator():
         """
         Main loop
         """
-        self.initialize_simulation()
-
-        # running = True
-        # while running:
+        self.start_episode()
         self.update(steps=int(self.max_time * const.STEPS_PER_SECOND))
-
-        # if self.time > self.max_time:
-        #     running = False
-
-        self.end_episode()
+        self.stop_episode()
 
     def update(self, steps=1):
         """
@@ -130,26 +122,60 @@ class Simulator():
         except IndexError:
             pass
 
-    def end_episode(self):
+    def stop_episode(self):
         """
         Handle everything that needs to be handled when episode ends.
         """
         # TODO: shutdown episode and possibly restart new one depending on parameters
-        self.environment.end_episode()
+        self.environment.stop_episode()
+
+
+def parse_config(config_filename):
+    """
+    Load configuration file into variables.
+    """
+    config = configparser.ConfigParser()
+    config.read(config_filename)
+    args = {}
+    args['max_time'] = int(config['simulation']['max_time'])
+    args['seed'] = int(config['simulation']['seed'])
+    args['num_elevators'] = int(config['environment']['num_elevators'])
+    args['num_floors'] = int(config['environment']['num_floors'])
+    args['controller'] = str(config['elevator']['controller'])
+    args['traffic_profile'] = str(config['traffic_profile']['type'])
+    args['interfloor'] = float(config['traffic_profile']['interfloor'])
+    args['use_q_file'] = bool(config['learning']['use_q_file'])
+    args['data_dir'] = config['learning']['data_dir']
+    if not os.path.isdir(args['data_dir']):
+        os.mkdir(args['data_dir'])
+    args['q_file'] = join(args['data_dir'], config['learning']['q_file'])
+    args['annealing_factor'] = float(config['learning']['annealing_factor'])
+    args['is_training'] = bool(config['learning']['is_training'])
+    args['num_episodes'] = int(config['learning']['num_episodes'])
+    args['num_epochs'] = int(config['learning']['num_epochs'])
+
+    return args
 
 
 if __name__ == '__main__':
-    sim = Simulator(max_time=10 * 60)
-    # sim = Simulator(max_time=42.22)
-    sim.run()
-    # sim.update(steps=10)
-    # sim.update(steps=10)
-    # sim.update(steps=10)
-    # sim.update(steps=10)
-    # sim.update(steps=10)
-    # sim.update(steps=10)
-    # sim.update(steps=10)
-    # sim.initialize_simulation()
-    env = sim.environment
-    elev = env.elevators[0]
-    fl = env.floors
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--config", default='config.ini', help='simulation configuration filename')
+    parser.add_argument("-v", "--verbose", action='store_true', help='include this if you want a more verbose output')
+    parser.add_argument("-n", "--num_episodes", type=int,help='number of episodes to run. overrides calculated number of episodes from annealing factor.')
+    parsed_args = parser.parse_args()
+    config_file = parsed_args.config
+
+    args = parse_config(config_file)
+    if parsed_args.num_episodes:
+        args['num_episodes'] = parsed_args.num_episodes
+    args['verbose'] = parsed_args.verbose
+    # args = {key: value for key, value in config['simulation'].items()}
+    sim = Simulator(**args)
+    if args['is_training']:
+        num_episodes = sim.environment.elevators[0].controller.num_training
+    else:
+        num_episodes = args['num_episodes']
+    
+    for _ in range(num_episodes):
+        sim.run()

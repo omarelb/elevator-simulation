@@ -14,96 +14,8 @@
 
 import sys
 import inspect
-import heapq, random
-# import cStringIO
-
-
-"""
- Data structures useful for implementing SearchAgents
-"""
-
-class Stack:
-    "A container with a last-in-first-out (LIFO) queuing policy."
-    def __init__(self):
-        self.list = []
-
-    def push(self,item):
-        "Push 'item' onto the stack"
-        self.list.append(item)
-
-    def pop(self):
-        "Pop the most recently pushed item from the stack"
-        return self.list.pop()
-
-    def isEmpty(self):
-        "Returns true if the stack is empty"
-        return len(self.list) == 0
-
-class Queue:
-    "A container with a first-in-first-out (FIFO) queuing policy."
-    def __init__(self):
-        self.list = []
-
-    def push(self,item):
-        "Enqueue the 'item' into the queue"
-        self.list.insert(0,item)
-
-    def pop(self):
-        """
-          Dequeue the earliest enqueued item still in the queue. This
-          operation removes the item from the queue.
-        """
-        return self.list.pop()
-
-    def isEmpty(self):
-        "Returns true if the queue is empty"
-        return len(self.list) == 0
-
-class PriorityQueue:
-    """
-      Implements a priority queue data structure. Each inserted item
-      has a priority associated with it and the client is usually interested
-      in quick retrieval of the lowest-priority item in the queue. This
-      data structure allows O(1) access to the lowest-priority item.
-
-      Note that this PriorityQueue does not allow you to change the priority
-      of an item.  However, you may insert the same item multiple times with
-      different priorities.
-    """
-    def  __init__(self):
-        self.heap = []
-        self.count = 0
-
-    def push(self, item, priority):
-        # FIXED: restored to stable behaviour
-        entry = (priority, self.count, item)
-        # entry = (priority, item)
-        heapq.heappush(self.heap, entry)
-        self.count += 1
-
-    def pop(self):
-        (_, _, item) = heapq.heappop(self.heap)
-        #  (_, item) = heapq.heappop(self.heap)
-        return item
-
-    def isEmpty(self):
-        return len(self.heap) == 0
-
-class PriorityQueueWithFunction(PriorityQueue):
-    """
-    Implements a priority queue with the same push/pop signature of the
-    Queue and the Stack classes. This is designed for drop-in replacement for
-    those two classes. The caller has to provide a priority function, which
-    extracts each item's priority.
-    """
-    def  __init__(self, priorityFunction):
-        "priorityFunction (item) -> priority"
-        self.priorityFunction = priorityFunction      # store the priority function
-        PriorityQueue.__init__(self)        # super-class initializer
-
-    def push(self, item):
-        "Adds an item to the queue with priority from the priority function"
-        PriorityQueue.push(self, item, self.priorityFunction(item))
+import random
+import math
 
 
 class Counter(dict):
@@ -168,7 +80,8 @@ class Counter(dict):
         """
         Returns the key with the highest value.
         """
-        if len(self.keys()) == 0: return None
+        if len(self.keys()) == 0:
+            return None
         all = self.items()
         values = [x[1] for x in all]
         max_index = values.index(max(values))
@@ -186,8 +99,10 @@ class Counter(dict):
         >>> a.sortedKeys()
         ['second', 'third', 'first']
         """
+        def compare(x, y):
+            return sign(y[1] - x[1])
         sorted_items = self.items()
-        compare = lambda x, y:  sign(y[1] - x[1])
+        # compare = lambda x, y: sign(y[1] - x[1])
         sorted_items.sort(cmp=compare)
         return [x[0] for x in sorted_items]
 
@@ -205,7 +120,8 @@ class Counter(dict):
         Counter will result in an error.
         """
         total = float(self.total_count())
-        if total == 0: return
+        if total == 0:
+            return
         for key in self.keys():
             self[key] = self[key] / total
 
@@ -223,7 +139,7 @@ class Counter(dict):
         """
         return Counter(dict.copy(self))
 
-    def __mul__(self, y ):
+    def __mul__(self, y):
         """
         Multiplying two counters gives the dot product of their vectors where
         each unique label is a vector element.
@@ -239,15 +155,15 @@ class Counter(dict):
         >>> a * b
         14
         """
-        sum = 0
+        sum_ = 0
         x = self
         if len(x) > len(y):
-            x,y = y,x
+            x, y = y, x
         for key in x:
             if key not in y:
                 continue
-            sum += x[key] * y[key]
-        return sum
+            sum_ += x[key] * y[key]
+        return sum_
 
     def __radd__(self, y):
         """
@@ -267,7 +183,7 @@ class Counter(dict):
         for key, value in y.items():
             self[key] += value
 
-    def __add__( self, y ):
+    def __add__(self, y):
         """
         Adding two counters gives a counter with the union of all keys and
         counts of the second added to counts of the first.
@@ -293,7 +209,7 @@ class Counter(dict):
             addend[key] = y[key]
         return addend
 
-    def __sub__( self, y ):
+    def __sub__(self, y):
         """
         Subtracting a counter from another gives a counter with the union of all keys and
         counts of the second subtracted from counts of the first.
@@ -319,6 +235,7 @@ class Counter(dict):
             addend[key] = -1 * y[key]
         return addend
 
+
 def raiseNotDefined():
     fileName = inspect.stack()[1][1]
     line = inspect.stack()[1][2]
@@ -326,6 +243,36 @@ def raiseNotDefined():
 
     print("*** Method not implemented: {} at line {} of {}".format(method, line, fileName))
     sys.exit(1)
+
+
+def boltzmann(values, temperature):
+    """
+    Return the boltzmann distribution over a set of values of length 2.
+    
+    Parameters
+    ----------
+    values : tuple
+        values to compute distribution over
+    temperature : float
+        the value of temperature controls the amount of randomness in the selection of actions.
+
+    Returns
+    -------
+    tuple
+        boltzmann distribution values for first and second element
+    """
+    x = values[0] / temperature
+    y = values[1] / temperature
+    try:
+        x = math.exp(x)
+    except OverflowError:
+        return (1, 0)
+    try:
+        y = math.exp(y)
+    except OverflowError:
+        return (0, 1)
+    return (x / (x + y), y / (x + y))
+
 
 def normalize(vector_or_counter):
     """
@@ -346,6 +293,7 @@ def normalize(vector_or_counter):
         if s == 0: return vector
         return [el / s for el in vector]
 
+
 def nSample(distribution, values, n):
     if sum(distribution) != 1:
         distribution = normalize(distribution)
@@ -362,7 +310,8 @@ def nSample(distribution, values, n):
             cdf += distribution[distPos]
     return samples
 
-def sample(distribution, values = None):
+
+def sample(distribution, values=None):
     if type(distribution) == Counter:
         items = sorted(distribution.items())
         distribution = [i[1] for i in items]
@@ -370,15 +319,17 @@ def sample(distribution, values = None):
     if sum(distribution) != 1:
         distribution = normalize(distribution)
     choice = random.random()
-    i, total= 0, distribution[0]
+    i, total = 0, distribution[0]
     while choice > total:
         i += 1
         total += distribution[i]
     return values[i]
 
+
 def sampleFromCounter(ctr):
     items = sorted(ctr.items())
     return sample([v for k,v in items], [k for k,v in items])
+
 
 def getProbability(value, distribution, values):
     """
@@ -391,11 +342,13 @@ def getProbability(value, distribution, values):
             total += prob
     return total
 
-def flip_coin( p ):
+
+def flip_coin(p):
     r = random.random()
     return r < p
 
-def chooseFromDistribution( distribution ):
+
+def chooseFromDistribution(distribution):
     "Takes either a counter or a list of (prob, key) pairs and samples"
     if type(distribution) == dict or type(distribution) == Counter:
         return sample(distribution)
@@ -403,16 +356,19 @@ def chooseFromDistribution( distribution ):
     base = 0.0
     for prob, element in distribution:
         base += prob
-        if r <= base: return element
+        if r <= base:
+            return element
 
-def sign( x ):
+
+def sign(x):
     """
     Returns 1 or -1 depending on the sign of x
     """
-    if( x >= 0 ):
+    if(x >= 0):
         return 1
     else:
         return -1
+
 
 def arrayInvert(array):
     """
@@ -424,16 +380,17 @@ def arrayInvert(array):
             result[inner].append(outer[inner])
     return result
 
-def matrixAsList( matrix, value = True ):
+
+def matrixAsList(matrix, value=True):
     """
     Turns a matrix into a list of coordinates matching the specified value
     """
-    rows, cols = len( matrix ), len( matrix[0] )
+    rows, cols = len(matrix), len(matrix[0])
     cells = []
-    for row in range( rows ):
-        for col in range( cols ):
+    for row in range(rows):
+        for col in range(cols):
             if matrix[row][col] == value:
-                cells.append( ( row, col ) )
+                cells.append((row, col))
     return cells
 
 # def lookup(name, namespace):

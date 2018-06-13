@@ -6,10 +6,12 @@ import constants as const
 
 # other modules
 import logging
-import numpy as np
-import numpy.random as rnd
+import csv
+import random
+import math
 from abc import ABC, abstractmethod
 from os.path import join
+from io import StringIO
 
 # from time import time, sleep
 from qlearningAgents import ElevatorQAgent
@@ -41,17 +43,31 @@ class Environment:
         floor i can be accessed by floors[i], where ground floor is floor[0].
     elevators : list
         elevator i can be accessed by elevators[i]
+    last_accumulator_event_time :
+        time when a passenger arrival, passenger transfer or elevator control event occurred.
+        necessary for updating accumulated costs for reinforcement agents.
     """
-    def __init__(self, num_floors=5, num_elevators=1, traffic_profile='down_peak'):
-        if traffic_profile == 'down_peak':
-            self.traffic_profile = DownPeak(num_floors)
+    def __init__(self, num_floors=5, num_elevators=1, traffic_profile='DownPeak', interfloor=0.1,
+                 controller='BestFirstAgent'):
+        if traffic_profile == 'DownPeak':
+            self.traffic_profile = DownPeak(num_floors, interfloor)
         else:
-            self.traffic_profile = DownPeak(num_floors)
+            self.traffic_profile = DownPeak(num_floors, interfloor)
 
         self.num_floors = num_floors
         self.num_elevators = num_elevators
         self.floors = [Floor(level) for level in range(self.num_floors)]
-        self.elevators = [ElevatorState(self) for _ in range(self.num_elevators)]
+        self.elevators = [ElevatorState(self, controller) for _ in range(self.num_elevators)]
+        self.last_accumulator_event_time = 0
+        self.passenger_statistics = StringIO()
+        self.passenger_csv_writer = csv.writer(self.passenger_statistics)
+
+    def start_episode(self, simulator):
+        for floor in self.floors[1:]:
+            events.PassengerArrivalEvent(simulator.now(), floor).generate(simulator)
+
+        for elevator in self.elevators:
+            elevator.controller.start_episode()
 
     def update(self, simulator):
         """
@@ -185,6 +201,45 @@ class Environment:
         """
         return self.num_hall_calls(level, down, above, down_up) > 0
 
+    def get_passengers_system(self):
+        """
+        Return all passengers in system.
+
+        Returns
+        -------
+        list
+            passenger objects representing passengers in elevators and floors.
+        """
+        return self.get_passengers_boarded + self.get_passengers_waiting
+
+    def get_passengers_waiting(self):
+        """
+        Return passengers waiting on every floor.
+
+        Returns
+        -------
+        list
+            passenger objects representing passengers waiting
+        """
+        result = []
+        for floor in self.floors:
+            result += floor.all_passengers()
+        return result
+
+    def get_passengers_boarded(self):
+        """
+        Return passengers boarded in elevators.
+
+        Returns
+        -------
+        list
+            passenger objects representing passengers in elevators
+        """
+        result = []
+        for elevator in self.elevators:
+            result += elevator.passengers_as_list()
+        return result
+
     def get_possible_actions(self, elevator_state):
         """
         Return possible actions the agent can take given the state of the environment.
@@ -300,20 +355,30 @@ class Environment:
         return {'start_floor': 0, 'start_direction': ElevatorState.STOPPED, 'capacity': 20,
                 'acc': 0, 'vel': 0, 'pos': 0}
 
-    def is_terminal(self):
-        """
-          Has the enviornment entered a terminal
-          state? This means there are no successors
-        """
-        state = self.get_current_state()
-        actions = self.get_possible_actions(state)
-        return len(actions) == 0
+    def update_accumulated_cost(self, simulator):
+        for elevator in self.elevators:
+            try:
+                elevator.controller.update_accumulated_cost(simulator)
+            except AttributeError:
+                # controller is not a reinforcement agent
+                pass
 
-    def end_episode(self):
+    # def is_terminal(self):
+    #     """
+    #       Has the enviornment entered a terminal
+    #       state? This means there are no successors
+    #     """
+    #     state = self.get_current_state()
+    #     actions = self.get_possible_actions(state)
+    #     return len(actions) == 0
+
+    def stop_episode(self):
         """
         Handle everything that needs to be handled to end the episode.
         """
-        pass
+        for elevator in self.elevators:
+            # TODO: FINISH FINAL
+            elevator.controller.final(self.passenger_statistics)
 
     def __str__(self):
         res = 'elevator positions - '
@@ -357,8 +422,6 @@ class ElevatorState(object):
         object handling elevator motion
     history : list
         containing ?
-    decision_time : float
-        time at which last decision was made
     accelerating_decision_made : bool
         true if a stop/continue decision at acceleration was made
     full_speed_decision_made : bool
@@ -389,13 +452,16 @@ class ElevatorState(object):
 
     num_elevators = 0
 
-    def __init__(self, environment, controller=BestFirstAgent(), floor=0, direction=None,
+    def __init__(self, environment, controller='BestFirstAgent', floor=0, direction=None,
                  current_action=None, capacity=20, status=None, constrained=False,
                  acc=0, vel=0, pos=0, history=None, decision_time=None, decision_made=False):
         self.id = ElevatorState.num_elevators
         ElevatorState.num_elevators += 1
         self.environment = environment
-        self.controller = controller
+        if controller == 'BestFirstAgent':
+            self.controller = BestFirstAgent(self.id)
+        elif controller == 'ElevatorQAgent':
+            self.controller = ElevatorQAgent(id=self.id)
         self._floor = floor
         self.direction = direction if direction else ElevatorState.STOPPED
         self._current_action = current_action if current_action else ElevatorState.NO_ACTION
@@ -405,7 +471,6 @@ class ElevatorState(object):
         self.constrained = constrained
         self.motion = ElevatorMotion(self, acc, vel, pos)
         self.history = history if history else []
-        self.decision_time = decision_time
         # TODO: UPDATE DECISION TIME WHEN DECISION IS MADE
         self.accelerating_decision_made = False
         self.full_speed_decision_made = False
@@ -510,7 +575,6 @@ class ElevatorState(object):
         next_floor = self.next_floor(floors, amount)
         return next_floor.has_passengers()
 
-
     def next_floor(self, floors, amount=1):
         """
         Return next floor the elevator is moving to.
@@ -608,11 +672,6 @@ class ElevatorState(object):
             if not (self.status == ElevatorState.ACCEL_DECELERATING or self.status == ElevatorState.FULL_SPEED_DECELERATING): 
                 self.accelerating_decision_made = False
                 self.full_speed_decision_made = False
-
-    def observe(self, simulator):
-        # position and action checks
-        # if self
-        pass
 
     def do_action(self, simulator, action):
         """
@@ -712,12 +771,12 @@ class ElevatorState(object):
 
     def __repr__(self):
         return 'ElevatorState(environment, controller={}, floor={}, direction={}, \
-current_action={}, capacity={}, action_in_progress={}, \
-status={}, constrained={}, acc={}, vel={}, pos={}, decision_time={}, \
-accelerating_decision_made={}, full_speed_decision_made={})'.format(self.controller, self.floor, const.MAP_CONST_STR[self.direction],
-                 const.MAP_CONST_STR[self.current_action], self.capacity, self.is_action_in_progress(),
-                 const.MAP_CONST_STR[self.status], self.constrained, self.motion.acc, self.motion.vel,
-                 self.motion.pos, self.decision_time, self.accelerating_decision_made, self.full_speed_decision_made)
+current_action={}, capacity={}, action_in_progress={}, status={}, constrained={}, \
+acc={}, vel={}, pos={}, accelerating_decision_made={}, full_speed_decision_made={})'.format(
+                self.controller, self.floor, const.MAP_CONST_STR[self.direction],
+                const.MAP_CONST_STR[self.current_action], self.capacity, self.is_action_in_progress(),
+                const.MAP_CONST_STR[self.status], self.constrained, self.motion.acc, self.motion.vel,
+                self.motion.pos, self.accelerating_decision_made, self.full_speed_decision_made)
 
 
 class ElevatorMotion:
@@ -734,8 +793,6 @@ class ElevatorMotion:
         elevator velocity in m/s
     pos : float
         elevator position in m
-    acc_update : func
-        function that dictates how elevator acceleration is updated. depends on state, action, etc.
     reference_time: float
         time in s which acceleration function evaluates as 0
     """
@@ -763,11 +820,11 @@ class ElevatorMotion:
         t = simulator.now() - self.reference_time
 
         if self.elevator_state.status == ElevatorState.ACCELERATING:
-            res = np.cos(const.ACCEL_CONST * t)
+            res = math.cos(const.ACCEL_CONST * t)
         elif self.elevator_state.status == ElevatorState.ACCEL_DECELERATING:
             res = (2 * const.ACCEL_DECEL[0] * t + const.ACCEL_DECEL[1])
         elif self.elevator_state.status == ElevatorState.FULL_SPEED_DECELERATING:
-            res = - np.cos(const.ACCEL_CONST * t)
+            res = - math.cos(const.ACCEL_CONST * t)
         else:
             return 0
 
@@ -827,8 +884,6 @@ class Floor(object):
         floor number
     pos : float
         vertical position in meters
-    arrival_rate : float
-        mean = 1 / lambda of poisson arrival process
     passengers_up : list
         contains passengers on floor going up
     passengers_down : list
@@ -968,12 +1023,12 @@ class Floor(object):
         Called when elevator stops at floor.
         """
         now = simulator.now()
-        boarding_time = 0
-        # TODO: INCLUDE BOARDING TIME FOR PASSENGERS GETTING OFF
+        boarding_time = 1
         # TODO: WHICH PASSENGER BOARDING DIRECTION DEPENDS ON ELEVATOR PASSENGERS AS WELL
         passengers_off = elevator_state.passengers[elevator_state.floor]
         for passenger in passengers_off:
-            simulator.insert(events.PassengerTransferEvent(now, passenger, elevator_state, to_elevator=False))
+            simulator.insert(events.PassengerTransferEvent(now + boarding_time, passenger, elevator_state, to_elevator=False))
+            boarding_time += 1  # TODO: Make boarding time random variable
         capacity_left = elevator_state.capacity_left() + len(passengers_off)
         num_up = self.num_up()
         num_down = self.num_down()
@@ -1011,20 +1066,17 @@ class Floor(object):
         if passengers_boarding:
             for loop, passenger in enumerate(passengers_boarding):
                 # TODO: time from truncated erlang instead of 1 second
-                simulator.insert(events.PassengerTransferEvent(now + loop + 1, passenger, elevator_state, to_elevator=True))
-            simulator.insert(events.DoneBoardingEvent(now + loop + 1 + const.GENERAL_EPS, elevator_state))
+                simulator.insert(events.PassengerTransferEvent(now + boarding_time, passenger, elevator_state, to_elevator=True))
+                boarding_time += 1
+            simulator.insert(events.DoneBoardingEvent(now + boarding_time - 1 + const.GENERAL_EPS, elevator_state))
         else:
-            simulator.insert(events.DoneBoardingEvent(now, elevator_state))
+            simulator.insert(events.DoneBoardingEvent(now + boarding_time - 1, elevator_state))
 
     def reset(self):
         self.passengers_up = []
         self.passengers_down = []
         self.up = False
         self.down = False
-
-    def update(self):
-        # self.update_button()
-        pass
 
     def __lt__(self, other):
         return self.level < other.level
@@ -1084,26 +1136,48 @@ class Passenger:
         self.arrival_time = None
 
     def arrive_at_floor(self, simulator):
+        """
+        Passenger chooses a target floor and is added to its arriving floor's queue.
+        """
         logger.info('time:%.3f:passenger %d arrives at floor %d', simulator.now(), self.id, self.floor.level)
         self.arrival_time = simulator.now()
         self.target = self.choose_target(simulator.environment)
         self.floor.add_passenger(self)
 
-    def system_time(self, simulator):
-        """Return time passenger has been in system."""
-        return simulator.now() - self.arrival_time
+    def system_time(self, t):
+        """
+        Return time passenger has been in system at time t.
+        
+        Parameters
+        ----------
+        t : float
+            time in seconds
+        """
+        return t - self.arrival_time
 
-    def waiting_time(self, simulator):
-        """Return time passenger has/had waited for an elevator."""
-        return simulator.now() - self.arrival_time - self.boarded_time * (self.status == Passenger.BOARDED)
+    def waiting_time(self, t):
+        """
+        Return time passenger has/had waited for an elevator at time t.
+        
+        Waiting time is zero if t is smaller than the arrival time.
 
-    def boarding_time(self, simulator):
-        """Return time passenger has been in elevator"""
-        return (simulator.now() - self.boarded_time) * (self.status == Passenger.BOARDED)
+        Parameters
+        ----------
+        t : float
+            time in seconds
+        """
+        return (t - self.arrival_time) * (t > self.arrival_time) - self.boarded_time * (self.status == Passenger.BOARDED)
 
-    def update_time(self):
-        """Update waiting or boarding time."""
-        pass
+    def boarding_time(self, t):
+        """
+        Return time passenger has been in elevator at time t.
+        
+        Parameters
+        ----------
+        t : float
+            time in seconds
+        """
+        return (t - self.boarded_time) * (self.status == Passenger.BOARDED)
 
     def going_up(self):
         """Return True if passenger is going up."""
@@ -1139,7 +1213,7 @@ class Passenger:
         elevator_state.passengers[self.target].append(self)
         logger.info('passenger %d enters elevator %d', self.id, elevator_state.id)
 
-    def exit_elevator(self, elevator_state):
+    def exit_elevator(self, elevator_state, now):
         """
         Remove passenger from elevator and system when exiting elevator.
 
@@ -1148,6 +1222,9 @@ class Passenger:
         elevator_state :
             called by the elevator defined in that elevator state
         """
+        # write waiting time and boarding time to string stream
+        data = (self.waiting_time(now), self.boarding_time(now))
+        self.passenger_csv_writer.writerow(data)
         elevator_state.passengers[self.target].remove(self)
         logger.info('passenger %d exits elevator %d', self.id, elevator_state.id)
 
@@ -1200,9 +1277,9 @@ class DownPeak(TrafficProfile):
 
     def choose_target(self, floor):
         # with prob `interfloor' choose floor != target else choose target
-        if rnd.rand() < self.interfloor:
+        if random.random() < self.interfloor:
             possible_floors = [pos_floor for pos_floor in range(self.num_floors) if pos_floor not in (0, floor.level)]
-            target = rnd.choice(possible_floors)
+            target = random.choice(possible_floors)
         else:
             target = self.target_floor
 
@@ -1215,7 +1292,7 @@ class DownPeak(TrafficProfile):
         Parameters
         ----------
         time : float
-            time in milliseconds after starting simulation
+            time in seconds after starting simulation
         """
         minutes_in = time / const.SECONDS_PER_MINUTE
         index = int(minutes_in / const.MINUTES_PER_TIME_INTERVAL)

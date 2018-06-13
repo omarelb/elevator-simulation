@@ -2,6 +2,7 @@ import numpy as np
 import math
 from scipy.optimize import newton 
 import matplotlib.pyplot as plt
+import csv
 
 ACCEL_TIME = 3.595 # seconds
 C = 0.8871057
@@ -83,14 +84,14 @@ def position(times):
     return - 1 / C**2 * (1 / C * np.sin(C * times) - times)
 
 
-end_time = 4.5 # seconds
-p = Particle(step=step)
-p.run(end_time)
+# end_time = 4.5 # seconds
+# p = Particle(step=step)
+# p.run(end_time)
 
-times = [x[0] for x in p.history]
-accs = [x[1] for x in p.history]
-vels = [x[2] for x in p.history]
-positions = [x[3] for x in p.history]
+# times = [x[0] for x in p.history]
+# accs = [x[1] for x in p.history]
+# vels = [x[2] for x in p.history]
+# positions = [x[3] for x in p.history]
 
 # plotting
 # fig, ax = plt.subplots(1, 1, sharex=True, sharey=True)
@@ -116,3 +117,10 @@ positions = [x[3] for x in p.history]
 # plt.legend(['acceleration', 'velocity', 'position'], prop={'size': 12})
 
 # plt.show()
+with open('names.csv', 'w') as csvfile:
+    fieldnames = ['first_name', 'last_name']
+    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+    writer.writeheader()
+    writer.writerow({'first_name': 'Baked', 'last_name': 'Beans'})
+    writer.writerow({'first_name': 'Lovely', 'last_name': 'Spam'})
+    writer.writerow({'first_name': 'Wonderful', 'last_name': 'Spam'})

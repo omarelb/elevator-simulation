@@ -8,6 +8,7 @@ import util
 import environment as env
 import numpy.random as rnd
 
+
 class HeuristicAgent(Agent):
     pass
 

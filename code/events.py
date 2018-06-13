@@ -43,6 +43,9 @@ class PassengerArrivalEvent(Event):
         new_passenger.arrive_at_floor(simulator)
         self.generate(simulator)
 
+        simulator.environment.update_accumulated_cost(self.time, simulator)
+        simulator.enter_elevator.last_accumulator_event_time = self.time
+
     def generate(self, simulator):
         """
         Generate a passenger arrival event according to a poisson(rate) process.
@@ -50,11 +53,8 @@ class PassengerArrivalEvent(Event):
         Rate depends on time in-simulation.
         """
         arrival_rate = simulator.environment.traffic_profile.arrival_rate(simulator.now())
-        next_arrival_time = rnd.exponential(scale=1 / arrival_rate) * const.SECONDS_PER_MINUTE
-        simulator.insert(PassengerArrivalEvent(simulator.now() + next_arrival_time, self.floor))
-
-    # def __str__(self):
-    #     return 'Arrival time: {}, Floor: {}'.format(self.time, self.floor)
+        inter_arrival_time = rnd.exponential(scale=1 / arrival_rate) * const.SECONDS_PER_MINUTE
+        simulator.insert(PassengerArrivalEvent(simulator.now() + inter_arrival_time, self.floor))
 
     def __repr__(self):
         return 'PassengerArrivalEvent(time={:.3f}, floor={})'.format(self.time, self.floor)
@@ -92,7 +92,10 @@ class PassengerTransferEvent(Event):
             self.passenger.enter_elevator(self.elevator_state)
         # self.passenger.floor.passengers
         else:
-            self.passenger.exit_elevator(self.elevator_state)
+            self.passenger.exit_elevator(self.elevator_state, simulator.now())
+        
+        simulator.environment.update_accumulated_cost(self.time, simulator)
+        simulator.enter_elevator.last_accumulator_event_time = self.time
 
     def __repr__(self):
         return 'PassengerTransferEvent(time={:.3f}, passenger={}, to_elevator={})'.format(
@@ -107,33 +110,12 @@ class DoneBoardingEvent(Event):
     def execute(self, simulator):
         if self.elevator_state.is_empty() and simulator.environment.no_buttons_pressed():
             self.elevator_state.status = env.ElevatorState.IDLE
+            self.elevator_state.direction = env.ElevatorState.STOPPED
         else:
             self.elevator_state.status = env.ElevatorState.DONE_BOARDING
 
     def __repr__(self):
         return 'DoneBoardingEvent(time={:.3f})'.format(self.time)
-
-
-class HallCallEvent(Event):
-    def __init__(self):
-        super().__init__()
-        self.down = False
-        self.up = False
-
-    def execute(self, simulator):
-        pass
-
-
-class HallCallHandled(Event):
-    pass
-
-
-class ElevatorArrivalEvent(Event):
-    def __init__(self):
-        pass
-
-    def execute(self, simulator):
-        pass
 
 
 class ElevatorActionEvent(Event):
@@ -170,9 +152,22 @@ class ElevatorControlEvent(Event):
         self.elevator_state = elevator_state
 
     def execute(self, simulator):
-        # self.elevator_state.controller.observation_function(simulator)
-        # self.elevator_state.controller.observe_transition()
+        # if self.elevator_state.controller is reinforcement agent
+        simulator.environment.update_accumulated_cost(self.time, simulator)
+        new_state = simulator.environment.get_learning_state()
+        if self.elevator_state.controller.last_action:
+            try:
+                self.elevator_state.controller.observe_transition(self.time, new_state,
+                                        self.elevator_state.controller.cost_accumulator)
+                simulator.environment.last_accumulator_event_time = self.time
+            except AttributeError:
+                # not a reinforcement agent
+                pass
         action = self.elevator_state.controller.get_action(simulator)
+        self.elevator_state.controller.decision_time = self.time
+        self.elevator_state.controller.cost_accumulator = 0
+        self.elevator_state.controller.last_action = action
+        self.elevator_state.controller.last_state = new_state
 
         simulator.insert(ElevatorActionEvent(simulator.now(), self.elevator_state, action))
 
