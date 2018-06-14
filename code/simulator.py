@@ -174,10 +174,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--config", default='config.ini', help='simulation configuration filename')
     parser.add_argument("-v", "--verbose", action='store_true', help='include this if you want a more verbose output')
+    parser.add_argument("-t", "--testing", action='store_true', help='testing out program i.e. do not write files')
     parser.add_argument("-n", "--num_episodes", type=int, help='number of episodes to run. overrides calculated number of episodes from annealing factor.')
     parsed_args = parser.parse_args()
     config_file = parsed_args.config
-
+    if parsed_args.testing:
+        args['use_q_file'] = False
     args = parse_config(config_file)
     if parsed_args.num_episodes:
         args['num_episodes'] = parsed_args.num_episodes
