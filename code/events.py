@@ -1,5 +1,5 @@
+import random
 from abc import ABC, abstractmethod
-
 import numpy.random as rnd
 
 import environment as env
@@ -43,8 +43,8 @@ class PassengerArrivalEvent(Event):
         new_passenger.arrive_at_floor(simulator)
         self.generate(simulator)
 
-        simulator.environment.update_accumulated_cost(self.time, simulator)
-        simulator.enter_elevator.last_accumulator_event_time = self.time
+        simulator.environment.update_accumulated_cost(simulator, self.time)
+        simulator.environment.last_accumulator_event_time = self.time
 
     def generate(self, simulator):
         """
@@ -52,8 +52,8 @@ class PassengerArrivalEvent(Event):
 
         Rate depends on time in-simulation.
         """
-        arrival_rate = simulator.environment.traffic_profile.arrival_rate(simulator.now())
-        inter_arrival_time = rnd.exponential(scale=1 / arrival_rate) * const.SECONDS_PER_MINUTE
+        arrival_rate = simulator.environment.traffic_profile.arrival_rate(simulator.now()) / const.MINUTES_PER_TIME_INTERVAL
+        inter_arrival_time = random.expovariate(arrival_rate) * const.SECONDS_PER_MINUTE
         simulator.insert(PassengerArrivalEvent(simulator.now() + inter_arrival_time, self.floor))
 
     def __repr__(self):
@@ -89,13 +89,13 @@ class PassengerTransferEvent(Event):
             else:
                 self.passenger.floor.passengers_down.pop(0)
         
-            self.passenger.enter_elevator(self.elevator_state)
+            self.passenger.enter_elevator(self.elevator_state, simulator.now())
         # self.passenger.floor.passengers
         else:
-            self.passenger.exit_elevator(self.elevator_state, simulator.now())
+            self.passenger.exit_elevator(self.elevator_state, simulator.now(), simulator.environment)
         
         simulator.environment.update_accumulated_cost(self.time, simulator)
-        simulator.enter_elevator.last_accumulator_event_time = self.time
+        simulator.environment.last_accumulator_event_time = self.time
 
     def __repr__(self):
         return 'PassengerTransferEvent(time={:.3f}, passenger={}, to_elevator={})'.format(
@@ -153,8 +153,8 @@ class ElevatorControlEvent(Event):
 
     def execute(self, simulator):
         # if self.elevator_state.controller is reinforcement agent
-        simulator.environment.update_accumulated_cost(self.time, simulator)
-        new_state = simulator.environment.get_learning_state()
+        simulator.environment.update_accumulated_cost(simulator, self.time)
+        new_state = simulator.environment.get_learning_state(self.elevator_state)
         if self.elevator_state.controller.last_action:
             try:
                 self.elevator_state.controller.observe_transition(self.time, new_state,
@@ -166,8 +166,6 @@ class ElevatorControlEvent(Event):
         action = self.elevator_state.controller.get_action(simulator)
         self.elevator_state.controller.decision_time = self.time
         self.elevator_state.controller.cost_accumulator = 0
-        self.elevator_state.controller.last_action = action
-        self.elevator_state.controller.last_state = new_state
 
         simulator.insert(ElevatorActionEvent(simulator.now(), self.elevator_state, action))
 

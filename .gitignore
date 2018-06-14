@@ -3,6 +3,7 @@ random/
 references/
 manuscript_files/img/
 manuscript_files/data/
+code/build/
 Assessment\ Criteria\ Bachelor\ Thesis\ EOR.pdf
 BScEORthesis-handleiding.pdf
 BScEORthesis-template-and-guide.pdf
@@ -17,3 +18,5 @@ BScEORthesis-template-and-guide.pdf
 *.synctex.gz
 *.toc
 *.pyc
+*.csv
+

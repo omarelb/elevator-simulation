@@ -47,8 +47,7 @@ class Environment:
         time when a passenger arrival, passenger transfer or elevator control event occurred.
         necessary for updating accumulated costs for reinforcement agents.
     """
-    def __init__(self, num_floors=5, num_elevators=1, traffic_profile='DownPeak', interfloor=0.1,
-                 controller='BestFirstAgent'):
+    def __init__(self, num_floors=5, num_elevators=1, traffic_profile='DownPeak', interfloor=0.1, **args):
         if traffic_profile == 'DownPeak':
             self.traffic_profile = DownPeak(num_floors, interfloor)
         else:
@@ -57,17 +56,28 @@ class Environment:
         self.num_floors = num_floors
         self.num_elevators = num_elevators
         self.floors = [Floor(level) for level in range(self.num_floors)]
-        self.elevators = [ElevatorState(self, controller) for _ in range(self.num_elevators)]
+        self.elevators = [ElevatorState(environment=self, index=i, **args) for i in range(self.num_elevators)]
         self.last_accumulator_event_time = 0
         self.passenger_statistics = StringIO()
         self.passenger_csv_writer = csv.writer(self.passenger_statistics)
 
     def start_episode(self, simulator):
+        """
+        Resets elevator and floor states and generates first passenger arrival events.
+
+        Called by simulator to start an episode.
+        """
+        logger.debug('initializing environment')
         for floor in self.floors[1:]:
+            floor.reset()
             events.PassengerArrivalEvent(simulator.now(), floor).generate(simulator)
 
         for elevator in self.elevators:
+            elevator.reset()
             elevator.controller.start_episode()
+
+    def reset(self):
+        pass
 
     def update(self, simulator):
         """
@@ -114,9 +124,11 @@ class Environment:
             learning state of the elevator as defined above
         """
         es = elevator_state
-        return (self.num_hall_calls(es.floor, down=True, above=True), self.num_hall_calls(es.floor, down=False, above=True),
-                self.num_hall_calls(es.floor, down=True, above=False), self.num_hall_calls(es.floor, down=False, above=False),
-                elevator_state.num_car_calls(), elevator_state.floor, elevator_state.direction)
+        return (self.num_hall_calls(es.floor, down=True, above=True, down_up=False),
+                self.num_hall_calls(es.floor, down=False, above=True, down_up=False),
+                self.num_hall_calls(es.floor, down=True, above=False, down_up=False),
+                self.num_hall_calls(es.floor, down=False, above=False, down_up=False),
+                es.num_car_calls(), es.floor, es.direction)
 
     def get_buttons(self, down=False, down_up=False):
         """
@@ -210,7 +222,7 @@ class Environment:
         list
             passenger objects representing passengers in elevators and floors.
         """
-        return self.get_passengers_boarded + self.get_passengers_waiting
+        return self.get_passengers_boarded() + self.get_passengers_waiting()
 
     def get_passengers_waiting(self):
         """
@@ -355,10 +367,13 @@ class Environment:
         return {'start_floor': 0, 'start_direction': ElevatorState.STOPPED, 'capacity': 20,
                 'acc': 0, 'vel': 0, 'pos': 0}
 
-    def update_accumulated_cost(self, simulator):
+    def update_accumulated_cost(self, simulator, event_time):
+        """
+        Update accumulated cost of elevators over time period
+        """
         for elevator in self.elevators:
             try:
-                elevator.controller.update_accumulated_cost(simulator)
+                elevator.controller.update_accumulated_cost(simulator, event_time)
             except AttributeError:
                 # controller is not a reinforcement agent
                 pass
@@ -378,7 +393,11 @@ class Environment:
         """
         for elevator in self.elevators:
             # TODO: FINISH FINAL
-            elevator.controller.final(self.passenger_statistics)
+            try:
+                elevator.controller.final(self.passenger_statistics)
+            except AttributeError:
+                # not a reinforcement agent
+                pass
 
     def __str__(self):
         res = 'elevator positions - '
@@ -416,8 +435,6 @@ class ElevatorState(object):
         dictionary of lists mapping floor to passengers traveling to that floor
     status : int
         indicate elevator status: accelerating, decelerating, full speed or idle
-    constrained : bool
-        true if current action taken was constrained i.e. the elevator had no choice.
     motion :
         object handling elevator motion
     history : list
@@ -453,22 +470,20 @@ class ElevatorState(object):
     num_elevators = 0
 
     def __init__(self, environment, controller='BestFirstAgent', floor=0, direction=None,
-                 current_action=None, capacity=20, status=None, constrained=False,
-                 acc=0, vel=0, pos=0, history=None, decision_time=None, decision_made=False):
+                 current_action=None, capacity=20, status=None, acc=0, vel=0, pos=0, history=None, **args):
         self.id = ElevatorState.num_elevators
         ElevatorState.num_elevators += 1
         self.environment = environment
         if controller == 'BestFirstAgent':
             self.controller = BestFirstAgent(self.id)
         elif controller == 'ElevatorQAgent':
-            self.controller = ElevatorQAgent(id=self.id)
+            self.controller = ElevatorQAgent(id=self.id, **args)
         self._floor = floor
         self.direction = direction if direction else ElevatorState.STOPPED
         self._current_action = current_action if current_action else ElevatorState.NO_ACTION
         self.capacity = capacity
         self.passengers = {i: [] for i in range(self.environment.num_floors)}
         self._status = status if status else ElevatorState.IDLE
-        self.constrained = constrained
         self.motion = ElevatorMotion(self, acc, vel, pos)
         self.history = history if history else []
         # TODO: UPDATE DECISION TIME WHEN DECISION IS MADE
@@ -503,10 +518,6 @@ class ElevatorState(object):
         self._current_action = value
         logger.info('elevator %d current action changes to %s', self.id, const.MAP_CONST_STR[value])
 
-    def is_constrained(self):
-        """Return True if current action choice was constrained."""
-        return self.constrained
-
     def capacity_left(self):
         """
         Return number of passengers that can still fit in the elevator right now.
@@ -532,15 +543,17 @@ class ElevatorState(object):
         for passenger in passengers:
             self.add_passenger(passenger)
 
-    def add_passenger(self, passenger):
+    def add_passenger(self, passenger, now):
         """
         Add given passenger to elevator
 
         Parameters
         ----------
         passenger : Passenger
+        now : float
+            current time in simulation
         """
-        passenger.enter_elevator(self)
+        passenger.enter_elevator(self, now)
 
     def car_calls(self):
         """
@@ -744,38 +757,31 @@ class ElevatorState(object):
     def is_action_in_progress(self):
         return self.current_action != ElevatorState.NO_ACTION
 
-    def reset(self, initial_state):
+    def reset(self):
         """
-        Reset the elevator to a given state.
-
-        Parameters
-        ----------
-        initial_state : dict
-            contains parameters defining the initial state
+        Reset the elevator state.
         """
         # self.controller = initial_state['controller']
-        self.floor = initial_state['start_floor']
-        self.direction = initial_state['start_direction']
+        self.floor = 0
+        self.direction = ElevatorState.STOPPED
         self.current_action = ElevatorState.NO_ACTION
-        self.capacity = initial_state['capacity']
         # dictionary of lists mapping floor to passengers traveling to that floor
         self.passengers = {i: [] for i in range(self.environment.num_floors)}
         self.status = ElevatorState.IDLE
-        # True if current elevator action was constrained
-        self.constrained = False
         # acceleration, velocity and position
-        self.motion.acc = initial_state['acc']
-        self.motion.vel = initial_state['vel']
-        self.motion.pos = initial_state['pos']
+        self.motion.acc = 0
+        self.motion.vel = 0
+        self.motion.pos = 0
+        self.stop_target = -1
         logger.debug('environment reset')
 
     def __repr__(self):
         return 'ElevatorState(environment, controller={}, floor={}, direction={}, \
-current_action={}, capacity={}, action_in_progress={}, status={}, constrained={}, \
+current_action={}, capacity={}, action_in_progress={}, status={}, \
 acc={}, vel={}, pos={}, accelerating_decision_made={}, full_speed_decision_made={})'.format(
                 self.controller, self.floor, const.MAP_CONST_STR[self.direction],
                 const.MAP_CONST_STR[self.current_action], self.capacity, self.is_action_in_progress(),
-                const.MAP_CONST_STR[self.status], self.constrained, self.motion.acc, self.motion.vel,
+                const.MAP_CONST_STR[self.status], self.motion.acc, self.motion.vel,
                 self.motion.pos, self.accelerating_decision_made, self.full_speed_decision_made)
 
 
@@ -904,11 +910,11 @@ class Floor(object):
     @property
     def up(self):
         return self._up
-    
+
     @up.setter
     def up(self, value):
         self._up = value
-        msg = 'on' if value else 'off' 
+        msg = 'on' if value else 'off'
         logger.info('up button on floor %d turns %s', self.level, msg)
 
     @property
@@ -968,7 +974,7 @@ class Floor(object):
     def has_passengers(self):
         return self.num_waiting() > 0
 
-    def update_button(self, passenger=True, target=None, elevator_state=None):
+    def update_button(self, passenger=True, target=None):
         """
         Update button state given an arriving passenger or arriving elevator
 
@@ -982,9 +988,6 @@ class Floor(object):
 
         target : int
             if button is updated by passenger arriving, indicates target floor
-
-        elevator_state : int
-            state of arriving elevator
         """
         # if no passengers: button - false -> true, if passengers already: true -> true
         if passenger:
@@ -1153,7 +1156,7 @@ class Passenger:
         t : float
             time in seconds
         """
-        return t - self.arrival_time
+        return (t - self.arrival_time) * (t > self.arrival_time)
 
     def waiting_time(self, t):
         """
@@ -1166,7 +1169,7 @@ class Passenger:
         t : float
             time in seconds
         """
-        return (t - self.arrival_time) * (t > self.arrival_time) - self.boarded_time * (self.status == Passenger.BOARDED)
+        return self.system_time(t) - self.boarding_time(t)
 
     def boarding_time(self, t):
         """
@@ -1195,7 +1198,7 @@ class Passenger:
         logger.info('passenger %d chooses floor %d', self.id, target)
         return target
 
-    def enter_elevator(self, elevator_state):
+    def enter_elevator(self, elevator_state, now):
         """
         Change state of passenger when entering elevator.
 
@@ -1209,11 +1212,12 @@ class Passenger:
             called by the elevator defined in that elevator state
         """
         self.status = Passenger.BOARDED
+        self.boarded_time = now
 
         elevator_state.passengers[self.target].append(self)
         logger.info('passenger %d enters elevator %d', self.id, elevator_state.id)
 
-    def exit_elevator(self, elevator_state, now):
+    def exit_elevator(self, elevator_state, now, environment):
         """
         Remove passenger from elevator and system when exiting elevator.
 
@@ -1223,8 +1227,9 @@ class Passenger:
             called by the elevator defined in that elevator state
         """
         # write waiting time and boarding time to string stream
-        data = (self.waiting_time(now), self.boarding_time(now))
-        self.passenger_csv_writer.writerow(data)
+        data = (elevator_state.controller.episodes_so_far, self.waiting_time(now),
+                self.boarding_time(now))
+        environment.passenger_csv_writer.writerow(data)
         elevator_state.passengers[self.target].remove(self)
         logger.info('passenger %d exits elevator %d', self.id, elevator_state.id)
 

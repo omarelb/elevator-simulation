@@ -13,13 +13,16 @@
 
 import logging
 import random
-import util
 import pickle
 import math
+import os
 
 from os.path import join
 
+import util
 import environment as env
+import constants as const
+
 from learningAgents import ReinforcementAgent
 
 logger = logging.getLogger(__name__)
@@ -38,7 +41,7 @@ class QLearningAgent(ReinforcementAgent):
     def __init__(self, **args):
         "You can initialize Q-values here..."
         ReinforcementAgent.__init__(self, **args)
-        if args['use_q_file']:
+        if args['use_q_file'] and os.path.isfile(args['q_file']):
             with open(args['q_file'], 'rb') as q_file:
                 self.episodes_so_far, self.accum_train_rewards, self.qvalues = pickle.load(q_file)
             logger.info('initialized q values from file %s', args['q_file'])
@@ -106,9 +109,9 @@ class QLearningAgent(ReinforcementAgent):
         possible_actions = (env.ElevatorState.STOP, env.ElevatorState.CONTINUE)
         qvalues = [self.get_qvalue(learning_state, action) for action in possible_actions]
 
-        if self.is_in_training():
+        if self.is_training:
             prob_stop = self.prob_stop(qvalues, self.temperature())
-            if rnd.rand() < prob_stop:
+            if random.random() < prob_stop:
                 return env.ElevatorState.STOP
             return env.ElevatorState.CONTINUE
         return self.compute_action_from_qvalues(learning_state)
@@ -183,7 +186,7 @@ class ElevatorQAgent(QLearningAgent):
         time at which last decision was made
     """
 
-    def __init__(self, beta=0.01, **args):
+    def __init__(self, beta=0.01, index=0, **args):
         """
         These default parameters can be changed from the pacman.py command line.
         For example, to change the exploration rate, try:
@@ -196,15 +199,18 @@ class ElevatorQAgent(QLearningAgent):
         """
         # args['alpha'] = alpha
         args['beta'] = beta
+        self.decision_time = 0
+        self.index = index
         # self.index = 0  # This is always Pacman
         QLearningAgent.__init__(self, **args)
 
-    def get_action(self, learning_state):
+    def get_action(self, simulator):
         """
         Simply calls the get_action method of QLearningAgent and then
         informs parent of action for Pacman.  Do not change or remove this
         method.
         """
+        learning_state = simulator.environment.get_learning_state(simulator.environment.elevators[self.index])
         action = super().get_action(learning_state)
         self.do_action(learning_state, action)
         return action
@@ -222,11 +228,14 @@ class ElevatorQAgent(QLearningAgent):
         for passenger in simulator.environment.get_passengers_waiting():
             w_0 = passenger.waiting_time(t_0)
             w_1 = passenger.waiting_time(t_1)
+            if abs(w_0) <= const.GENERAL_EPS: w_0 = 0
+            if abs(w_1) <= const.GENERAL_EPS: w_1 = 0
             part_0 = math.exp(-b * (t_0 - d)) * (2 / b**3 + 2 * w_0 / b**2 + w_0**2 / b)
             part_1 = math.exp(-b * (t_1 - d)) * (2 / b**3 + 2 * w_1 / b**2 + w_1**2 / b)
-            result += part_0 - part_1
+            result += (part_0 - part_1) * 10e-6
 
         self.cost_accumulator += result
+        logger.info('elevator %d cost accumulator set to %.3f', self.index, self.cost_accumulator)
 
     def update(self, now, next_state, reward):
         """
@@ -241,6 +250,9 @@ class ElevatorQAgent(QLearningAgent):
         min_next_q = min([self.get_qvalue(next_state, action) for action in possible_actions])
 
         sample = reward + math.exp(-self.beta * (now - self.decision_time)) * min_next_q
-
-        self.qvalues[(self.last_state, self.last_action)] = ((1 - self.alpha) * self.get_qvalue(self.last_state, self.last_action) +
-                                                             self.alpha * sample)
+        orig = self.qvalues[(self.last_state, self.last_action)]
+        self.qvalues[(self.last_state, self.last_action)] = ((1 - self.alpha()) * self.get_qvalue(self.last_state, self.last_action) +
+                                                             self.alpha() * sample)
+        new = self.qvalues[(self.last_state, self.last_action)] 
+        logger.info('time:%.2f:state:%s:action:%s:reward:%.3f:original_q:%.3f:target:%.3f:new_q:%.3f',
+                    now, self.last_state, self.last_action, reward, orig, sample, new)

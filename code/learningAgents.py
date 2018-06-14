@@ -13,12 +13,16 @@
 
 # from game import Directions, Agent, Actions
 
-import random
 import time
 import math
-import util
 import pickle
 import shutil  # copying iostream to file
+import os
+
+from os.path import join
+
+import util
+import constants as const
 
 
 class Agent:
@@ -172,14 +176,14 @@ class ReinforcementAgent(ValueEstimationAgent):
         """
         util.raiseNotDefined()
 
-    def observe_transition(self, state, action, delta_reward):
+    def observe_transition(self, observed_time, action, delta_reward):
         """
         Called by environment to inform agent that a transition has
         been observed. This will result in a call to self.update
         on the same arguments
         """
         self.episode_rewards += delta_reward
-        self.update(state, action, delta_reward)
+        self.update(observed_time, action, delta_reward)
 
     def stop_episode(self):
         """
@@ -228,10 +232,21 @@ class ReinforcementAgent(ValueEstimationAgent):
             containing passenger statistics in csv format. to be written to file
         """
         self.stop_episode()
+        # for key, value in self.qvalues.items():
+        #     print(key, value)
+        # quit()
         if self.use_q_file and self.is_training:
             with open(self.q_file, 'wb') as q_file:
                 pickle.dump((self.episodes_so_far, self.accum_train_rewards, self.qvalues), q_file)
-        with open(join('data', 'passenger_statistics.csv'), 'a') as f:
+        passenger_datafile = join('data', 'passenger_statistics.csv')
+        exists = False
+        if os.path.isfile(passenger_datafile):
+            exists = True
+        # TODO: MAKE STATISTICS FILENAME VARIABLE
+        with open(passenger_datafile, 'a') as f:
+            if not exists:
+                f.write('episode,waiting_time,boarding_time\r\n')
+            stream.seek(0)
             shutil.copyfileobj(stream, f)
         # TODO: Parameterize data_dir and csv filename depending on training, etc.
 
@@ -240,30 +255,29 @@ class ReinforcementAgent(ValueEstimationAgent):
             self.episode_start_time = time.time()
         if 'last_window_accum_rewards' not in self.__dict__:
             self.last_window_accum_rewards = 0.0
-        # self.last_window_accum_rewards += state.get_score()
-        # TODO: COMPUTE STATISTICS WHEN PASSENGER LEAVES ELEVATOR
+        
+        # TODO: REWRITE TO INCORPORATE MULTIPLE AGENTS
+        self.last_window_accum_rewards += self.episode_rewards
 
-        # TODO: REWRITE THIS
-        NUM_EPS_UPDATE = 50
-        if self.episodes_so_far % NUM_EPS_UPDATE == 0:
+        if self.episodes_so_far % const.NUM_EPS_UPDATE == 0:
             print('Reinforcement Learning Status:')
-            window_avg = self.last_window_accum_rewards / float(NUM_EPS_UPDATE)
+            window_avg = self.last_window_accum_rewards / const.NUM_EPS_UPDATE
             if self.episodes_so_far <= self.num_training:
-                train_avg = self.accum_train_rewards / float(self.episodes_so_far)
+                train_avg = self.accum_train_rewards / self.episodes_so_far
                 print('\tCompleted %d out of %d training episodes' % (
-                       self.episodes_so_far, self.num_training))
+                      self.episodes_so_far, self.num_training))
                 print('\tAverage Rewards over all training: %.2f' % (
-                        train_avg))
+                      train_avg))
             else:
                 test_avg = float(self.accum_test_rewards) / (self.episodes_so_far - self.num_training)
                 print('\tCompleted %d test episodes' % (self.episodes_so_far - self.num_training))
                 print('\tAverage Rewards over testing: %.2f' % test_avg)
-            print('\tAverage Rewards for last %d episodes: %.2f'  % (
-                    NUM_EPS_UPDATE, window_avg))
+            print('\tAverage Rewards for last %d episodes: %.2f' % (
+                  const.NUM_EPS_UPDATE, window_avg))
             print('\tEpisode took %.2f seconds' % (time.time() - self.episode_start_time))
             self.last_window_accum_rewards = 0.0
             self.episode_start_time = time.time()
 
         if self.episodes_so_far == self.num_training:
             msg = 'Training Done (turning off epsilon and alpha)'
-            print('%s\n%s' % (msg,'-' * len(msg)))
+            print('%s\n%s' % (msg, '-' * len(msg)))

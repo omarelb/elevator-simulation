@@ -1,13 +1,10 @@
 """
 Defines elevator agents that are rule-based controllers. 
 """
+import random
 
-from learningAgents import Agent
-
-import util
 import environment as env
-import numpy.random as rnd
-
+from learningAgents import Agent
 
 class HeuristicAgent(Agent):
     pass
@@ -54,7 +51,7 @@ class RandomAgent(Agent):
         float \in [0, 1] indicating the probability of choosing action continue
     """
     def get_action(self, simulator, prob_cont=0.5):
-        if rnd.rand() < prob_cont:
+        if random.random() < prob_cont:
             return env.ElevatorState.CONTINUE
         return env.ElevatorState.STOP
 

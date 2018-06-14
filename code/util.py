@@ -82,8 +82,8 @@ class Counter(dict):
         """
         if len(self.keys()) == 0:
             return None
-        all = self.items()
-        values = [x[1] for x in all]
+        all_ = self.items()
+        values = [x[1] for x in all_]
         max_index = values.index(max(values))
         return all[max_index][0]
 

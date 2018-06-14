@@ -16,17 +16,17 @@ FLOOR_TIME = 1
 DOWNPEAK_RATES = (1, 2, 4, 4, 18, 12, 8, 7, 18, 5, 3, 2)
 
 # motion dynamics
-ACCEL_TIME = 3.595 # seconds to accelerate to full speed from zero.
-MAX_SPEED = 2.54 # m/s
+ACCEL_TIME = 3.595  # seconds to accelerate to full speed from zero.
+MAX_SPEED = 2.54  # m/s
 # motion for accelerating and decelerating from full speed: a(t) = sin(C*t) <- C 
-ACCEL_CONST = 0.8871057 
+ACCEL_CONST = 0.8871057
 # decision point distance for elevator at full speed
 # to next floor
 # FULL_SPEED_DECISION_DIST = 4.6363218403
 # from last floor
 FULL_SPEED_DECISION_DIST = 2.6836781597
 # decision point distance for accelerating elevator
-ACCEL_DECISION_DIST = 1.83 # FLOOR_HEIGHT / 2
+ACCEL_DECISION_DIST = 1.83  # FLOOR_HEIGHT / 2
 
 # parameters for decelerating while accelerating at half floor height
 # parabola: a(t) = c_1*x^2 + c_2 * x + c_3
@@ -36,11 +36,12 @@ ACCEL_DECEL = (3.51757258, -6.4762952, 0.9575183, 1.94148245)
 
 
 # other
-TIME_STEP = 0.01 # in seconds
+TIME_STEP = 0.01  # in seconds
 STEPS_PER_SECOND = int(round(1 / 0.01))
 SECONDS_PER_MINUTE = 60
 MILLISECONDS_PER_SECOND = 1000
 MINUTES_PER_TIME_INTERVAL = 5
+NUM_EPS_UPDATE = 5
 
 # numerical help with comparisons
 GENERAL_EPS = 0.0001
