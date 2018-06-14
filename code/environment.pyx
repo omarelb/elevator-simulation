@@ -785,7 +785,7 @@ acc={}, vel={}, pos={}, accelerating_decision_made={}, full_speed_decision_made=
                 self.motion.pos, self.accelerating_decision_made, self.full_speed_decision_made)
 
 
-class ElevatorMotion:
+cdef class ElevatorMotion:
     """
     Contains information regarding motion of the elevator as well as how to update it.
 
@@ -801,8 +801,11 @@ class ElevatorMotion:
         elevator position in m
     reference_time: float
         time in s which acceleration function evaluates as 0
-    """
-    def __init__(self, elevator_state, acc=0, vel=0, pos=0, reference_time=0):
+    """ 
+    cdef float acc, vel, pos, reference_time
+    cdef ElevatorState elevator_state
+
+    def __init__(self, elevator_state, float acc=0, float vel=0, float pos=0, float reference_time=0):
         self.elevator_state = elevator_state
         self.acc = acc
         self.vel = vel
