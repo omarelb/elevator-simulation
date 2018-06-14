@@ -27,7 +27,7 @@ file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
 
-class Environment:
+cdef class Environment:
     """
     Combines all separate parts of an environment.
 
@@ -47,7 +47,12 @@ class Environment:
         time when a passenger arrival, passenger transfer or elevator control event occurred.
         necessary for updating accumulated costs for reinforcement agents.
     """
-    def __init__(self, num_floors=5, num_elevators=1, traffic_profile='DownPeak', interfloor=0.1, **args):
+    cdef public int num_floors, num_elevators
+    cdef public float last_accumulator_event_time
+    cdef public object floors, elevators, passenger_statistics, passenger_csv_writer, traffic_profile
+
+    def __init__(self, int num_floors=5, int num_elevators=1, object traffic_profile='DownPeak',
+                 float interfloor=0.1, **args):
         if traffic_profile == 'DownPeak':
             self.traffic_profile = DownPeak(num_floors, interfloor)
         else:
@@ -93,13 +98,7 @@ class Environment:
         for elevator_state in self.elevators:
             elevator_state.observe(simulator)
 
-    def get_current_state(self):
-        """
-        Returns the current state of enviornment
-        """
-        pass
-
-    def get_learning_state(self, elevator_state):
+    cpdef get_learning_state(self, elevator_state):
         """
         Return the state used by a learning agent.
 
@@ -130,7 +129,7 @@ class Environment:
                 self.num_hall_calls(es.floor, down=False, above=False, down_up=False),
                 es.num_car_calls(), es.floor, es.direction)
 
-    def get_buttons(self, down=False, down_up=False):
+    def get_buttons(self, bint down=False, bint down_up=False):
         """
         Return button state of all floors.
 
@@ -252,7 +251,7 @@ class Environment:
             result += elevator.passengers_as_list()
         return result
 
-    def get_possible_actions(self, elevator_state):
+    cdef get_possible_actions(self, object elevator_state):
         """
         Return possible actions the agent can take given the state of the environment.
 
@@ -268,6 +267,7 @@ class Environment:
         tuple
             actions which be taken by the agent
         """
+        cdef int status, num_pass_up, num_pass_down, amount, stop_target
         status = elevator_state.status
 
         # cannot take new action when action is still in progress or no passengers in system
@@ -446,7 +446,6 @@ class ElevatorState(object):
     stop_target : int
         floor number of floor to stop at if action is stop
     """
-    # elevator direction
     UP = 1
     DOWN = -1
     STOPPED = 0  # and status
@@ -467,12 +466,9 @@ class ElevatorState(object):
     MOVE_UP = 11
     MOVE_DOWN = 12
 
-    num_elevators = 0
-
-    def __init__(self, environment, controller='BestFirstAgent', floor=0, direction=None,
+    def __init__(self, environment, controller='BestFirstAgent', floor=0, direction=None, index=0,
                  current_action=None, capacity=20, status=None, acc=0, vel=0, pos=0, history=None, **args):
-        self.id = ElevatorState.num_elevators
-        ElevatorState.num_elevators += 1
+        self.id = index
         self.environment = environment
         if controller == 'BestFirstAgent':
             self.controller = BestFirstAgent(self.id)
@@ -801,18 +797,18 @@ cdef class ElevatorMotion:
         elevator position in m
     reference_time: float
         time in s which acceleration function evaluates as 0
-    """ 
-    cdef float acc, vel, pos, reference_time
-    cdef ElevatorState elevator_state
+    """
+    cdef public float acc, vel, pos, reference_time
+    cdef public object elevator_state
 
-    def __init__(self, elevator_state, float acc=0, float vel=0, float pos=0, float reference_time=0):
+    def __init__(self, object elevator_state, float acc=0, float vel=0, float pos=0, float reference_time=0):
         self.elevator_state = elevator_state
         self.acc = acc
         self.vel = vel
         self.pos = pos
         self.reference_time = reference_time
 
-    def dacc(self, simulator):
+    cdef dacc(self, object simulator):
         """
         Return the change in acceleration for a given timestep.
 
@@ -826,6 +822,7 @@ cdef class ElevatorMotion:
         simulator :
             simulator object which has information about time and timestep size
         """
+        cdef float t, res
         t = simulator.now() - self.reference_time
 
         if self.elevator_state.status == ElevatorState.ACCELERATING:
@@ -883,7 +880,7 @@ cdef class ElevatorMotion:
             self.acc, self.vel, self.pos, self.reference_time)
 
 
-class Floor(object):
+cdef class Floor(object):
     """
     Represents a floor in a building.
 
@@ -902,7 +899,12 @@ class Floor(object):
     down : bool
         down hall button on this floor True if on
     """
-    def __init__(self, level):
+    cdef public int level
+    cdef public float pos
+    cdef public list passengers_up, passengers_down
+    cdef public bint _up
+    cdef public bint _down
+    def __init__(self, int level):
         self.level = level
         self.pos = const.FLOOR_HEIGHT * self.level
         self.passengers_up = []
@@ -943,7 +945,7 @@ class Floor(object):
         else:
             self.passengers_down.append(passenger)
 
-        self.update_button(target=passenger.target)
+        self.update_button(passenger.target)
 
     def all_passengers(self):
         """
@@ -977,7 +979,7 @@ class Floor(object):
     def has_passengers(self):
         return self.num_waiting() > 0
 
-    def update_button(self, passenger=True, target=None):
+    cdef update_button(self, int target):
         """
         Update button state given an arriving passenger or arriving elevator
 
@@ -993,11 +995,10 @@ class Floor(object):
             if button is updated by passenger arriving, indicates target floor
         """
         # if no passengers: button - false -> true, if passengers already: true -> true
-        if passenger:
-            if target < self.level and not self.down:
-                self.down = True
-            elif target > self.level and not self.up:
-                self.up = True
+        if target < self.level and not self.down:
+            self.down = True
+        elif target > self.level and not self.up:
+            self.up = True
 
     def get_buttons(self):
         """
@@ -1010,16 +1011,17 @@ class Floor(object):
         """
         return (self.down, self.up)
 
-    def waiting_time(self, simulator):
+    def waiting_time(self, object simulator):
         """
         Return sum of passenger waiting times on this floor.
         """
+        cdef float result
         result = 0
         for passenger in self.all_passengers():
             result += passenger.waiting_time(simulator)
         return result
 
-    def board_passengers(self, simulator, elevator_state):
+    def board_passengers(self, object simulator, object elevator_state):
         """
         Transfer passengers from floor to elevator and vice versa
 
@@ -1028,6 +1030,8 @@ class Floor(object):
 
         Called when elevator stops at floor.
         """
+        cdef float now, boarding_time
+        cdef int capacity_left, num_up, num_down
         now = simulator.now()
         boarding_time = 1
         # TODO: WHICH PASSENGER BOARDING DIRECTION DEPENDS ON ELEVATOR PASSENGERS AS WELL
@@ -1068,9 +1072,8 @@ class Floor(object):
                     passengers_boarding = self.passengers_up[:]
                     simulator.environment.floors[elevator_state.floor].up = False
 
-        loop = 0
         if passengers_boarding:
-            for loop, passenger in enumerate(passengers_boarding):
+            for passenger in passengers_boarding:
                 # TODO: time from truncated erlang instead of 1 second
                 simulator.insert(events.PassengerTransferEvent(now + boarding_time, passenger, elevator_state, to_elevator=True))
                 boarding_time += 1
@@ -1123,6 +1126,10 @@ class Passenger:
     id : int
         unique passenger identifier
     """
+    # cdef public int status, target, _id
+    # cdef public float arrival_time, boarded_time
+    # cdef public object floor
+    
     WAITING = 0
     BOARDED = 1
 
@@ -1135,11 +1142,11 @@ class Passenger:
         if target:
             self.target = target
         self.status = Passenger.WAITING
-        self.boarded_time = 0
         self.id = Passenger.num_passengers_total
         Passenger.num_passengers_total += 1
         self.floor = floor
-        self.arrival_time = None
+        self.arrival_time = 0
+        self.boarded_time = 0
 
     def arrive_at_floor(self, simulator):
         """
@@ -1150,7 +1157,7 @@ class Passenger:
         self.target = self.choose_target(simulator.environment)
         self.floor.add_passenger(self)
 
-    def system_time(self, t):
+    def system_time(self, float t):
         """
         Return time passenger has been in system at time t.
         
@@ -1161,7 +1168,7 @@ class Passenger:
         """
         return (t - self.arrival_time) * (t > self.arrival_time)
 
-    def waiting_time(self, t):
+    def waiting_time(self, float t):
         """
         Return time passenger has/had waited for an elevator at time t.
         
@@ -1174,7 +1181,7 @@ class Passenger:
         """
         return self.system_time(t) - self.boarding_time(t)
 
-    def boarding_time(self, t):
+    def boarding_time(self, float t):
         """
         Return time passenger has been in elevator at time t.
         
@@ -1193,7 +1200,7 @@ class Passenger:
         """Return True if passenger is going up."""
         return self.target < self.floor.level
     
-    def choose_target(self, environment):
+    def choose_target(self, object environment):
         """
         Return target floor according to current traffic
         """
@@ -1201,7 +1208,7 @@ class Passenger:
         logger.info('passenger %d chooses floor %d', self.id, target)
         return target
 
-    def enter_elevator(self, elevator_state, now):
+    def enter_elevator(self, object elevator_state, float now):
         """
         Change state of passenger when entering elevator.
 
@@ -1220,7 +1227,7 @@ class Passenger:
         elevator_state.passengers[self.target].append(self)
         logger.info('passenger %d enters elevator %d', self.id, elevator_state.id)
 
-    def exit_elevator(self, elevator_state, now, environment):
+    def exit_elevator(self, object elevator_state, float now, object environment):
         """
         Remove passenger from elevator and system when exiting elevator.
 
@@ -1241,13 +1248,6 @@ class Passenger:
 
     def __repr__(self):
         return 'Passenger(floor={}, target={})'.format(self.floor, self.target)
-
-
-class Action:
-    """This class contains static methods relating to actions."""
-
-    def get_legal_actions(self, state):
-        pass
 
 
 class TrafficProfile(ABC):
@@ -1285,6 +1285,7 @@ class DownPeak(TrafficProfile):
 
     def choose_target(self, floor):
         # with prob `interfloor' choose floor != target else choose target
+        cdef list possible_floors
         if random.random() < self.interfloor:
             possible_floors = [pos_floor for pos_floor in range(self.num_floors) if pos_floor not in (0, floor.level)]
             target = random.choice(possible_floors)
@@ -1293,7 +1294,7 @@ class DownPeak(TrafficProfile):
 
         return target
 
-    def arrival_rate(self, time):
+    def arrival_rate(self, float time):
         """
         Return mean number of people arriving in this timeframe.
 
@@ -1302,6 +1303,8 @@ class DownPeak(TrafficProfile):
         time : float
             time in seconds after starting simulation
         """
+        cdef float minutes_in
+        cdef int index
         minutes_in = time / const.SECONDS_PER_MINUTE
         index = int(minutes_in / const.MINUTES_PER_TIME_INTERVAL)
         return const.DOWNPEAK_RATES[index]
