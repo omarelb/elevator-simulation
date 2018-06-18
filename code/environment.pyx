@@ -49,7 +49,7 @@ cdef class Environment:
     """
     cdef public int num_floors, num_elevators
     cdef public float last_accumulator_event_time
-    cdef public object floors, elevators, passenger_statistics, passenger_csv_writer, traffic_profile
+    cdef public object floors, elevators, passenger_times, traffic_profile
 
     def __init__(self, int num_floors=5, int num_elevators=1, object traffic_profile='DownPeak',
                  float interfloor=0.1, **args):
@@ -63,16 +63,20 @@ cdef class Environment:
         self.floors = [Floor(level) for level in range(self.num_floors)]
         self.elevators = [ElevatorState(environment=self, index=i, **args) for i in range(self.num_elevators)]
         self.last_accumulator_event_time = 0
-        self.passenger_statistics = StringIO()
-        self.passenger_csv_writer = csv.writer(self.passenger_statistics)
+        self.passenger_times = []
 
-    def start_episode(self, simulator):
+    def start_episode(self, object simulator):
         """
         Resets elevator and floor states and generates first passenger arrival events.
 
         Called by simulator to start an episode.
         """
         logger.debug('initializing environment')
+        self.reset(simulator)
+
+    def reset(self, object simulator):
+        self.last_accumulator_event_time = 0
+        self.passenger_times = []
         for floor in self.floors[1:]:
             floor.reset()
             events.PassengerArrivalEvent(simulator.now(), floor).generate(simulator)
@@ -80,9 +84,6 @@ cdef class Environment:
         for elevator in self.elevators:
             elevator.reset()
             elevator.controller.start_episode()
-
-    def reset(self):
-        pass
 
     def update(self, simulator):
         """
@@ -1236,10 +1237,11 @@ class Passenger:
         elevator_state :
             called by the elevator defined in that elevator state
         """
+        environment.passenger_times.append((self.waiting_time(now), self.boarding_time(now),
+                                            self.system_time(now), self.waiting_time(now) > 60))
         # write waiting time and boarding time to string stream
-        data = (elevator_state.controller.episodes_so_far, self.waiting_time(now),
-                self.boarding_time(now))
-        environment.passenger_csv_writer.writerow(data)
+        # data = (elevator_state.controller.episodes_so_far, self.waiting_time(now),
+        #         self.boarding_time(now))
         elevator_state.passengers[self.target].remove(self)
         logger.info('passenger %d exits elevator %d', self.id, elevator_state.id)
 

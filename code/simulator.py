@@ -87,11 +87,8 @@ class Simulator:
         Main loop
         """
         self.start_episode()
-        t1 = time.time()
         try:
             self.update(steps=int(self.max_time * const.STEPS_PER_SECOND))
-            print(time.time() - t1)
-            quit()
         except KeyboardInterrupt:
             self.stop_episode()
             quit()
@@ -195,6 +192,7 @@ if __name__ == '__main__':
     else:
         num_episodes = args['num_testing_episodes']
     
+    print('running for {} episodes'.format(num_episodes))
     for i in range(num_episodes):
         print('starting episode {}'.format(i))
         sim.run()
