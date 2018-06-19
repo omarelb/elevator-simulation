@@ -261,16 +261,11 @@ def boltzmann(values, temperature):
     tuple
         boltzmann distribution values for first and second element
     """
-    x = values[0] / temperature
-    y = values[1] / temperature
-    try:
-        x = math.exp(x)
-    except OverflowError:
-        return (1, 0)
-    try:
-        y = math.exp(y)
-    except OverflowError:
-        return (0, 1)
+    # normalize input to prevent blowing up exponential
+    max_ = max(values)
+    values = [x - max_ for x in values]
+    x = math.exp(values[0] / temperature)
+    y = math.exp(values[1] / temperature)
     return (x / (x + y), y / (x + y))
 
 

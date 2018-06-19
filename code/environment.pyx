@@ -19,7 +19,7 @@ from heuristicAgents import RandomAgent, BestFirstAgent
 import events
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
 file_handler = logging.FileHandler(join(const.LOG_DIR, 'environment.log'), mode='w')
 file_handler.setLevel(logging.DEBUG)
@@ -393,9 +393,8 @@ cdef class Environment:
         Handle everything that needs to be handled to end the episode.
         """
         for elevator in self.elevators:
-            # TODO: FINISH FINAL
             try:
-                elevator.controller.final(self.passenger_statistics)
+                elevator.controller.final(self.passenger_times)
             except AttributeError:
                 # not a reinforcement agent
                 pass

@@ -1,3 +1,4 @@
+import pyximport; pyximport.install()
 import heapq
 import logging
 import configparser  # parse configuration files
@@ -14,10 +15,10 @@ import learningAgents
 from environment import Environment, Floor, ElevatorState, Passenger
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
 file_handler = logging.FileHandler(join(const.LOG_DIR, 'simulator.log'), mode='w')
-file_handler.setLevel(logging.DEBUG)
+file_handler.setLevel(logging.WARNING)
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
@@ -47,7 +48,7 @@ class Simulator:
         self.events = []
         self.seed = seed
         self.max_time = max_time
-        random.seed(a=seed)
+        # random.seed(a=seed)
         # self.environment = Environment(kwargs['num_floors'], kwargs['num_elevators'], kwargs['traffic_profile'],
         #                                kwargs['interfloor'], kwargs['controller'])
         self.environment = Environment(**args)
@@ -134,6 +135,7 @@ class Simulator:
         Handle everything that needs to be handled when episode ends.
         """
         # TODO: shutdown episode and possibly restart new one depending on parameters
+        print('stopping episode')
         self.environment.stop_episode()
 
     def reset(self):

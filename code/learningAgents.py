@@ -167,6 +167,7 @@ class ReinforcementAgent(ValueEstimationAgent):
         # self.start_alpha = float(start_alpha)
         self.beta = float(beta)
         self.use_q_file = args['use_q_file']
+        args['q_file'] = args['q_file'] + '_' + str(self.num_training) + '.pkl'
         self.q_file = args['q_file']
         self.qvalues = None
 
@@ -232,15 +233,13 @@ class ReinforcementAgent(ValueEstimationAgent):
             containing tuples (waiting_time, boarding_time, system_time, waiting_time > 60)
             for each passenger in the simulation. Averages need to be written to file.
         """
+        append_name = 'train' if self.is_training else 'test'
         self.stop_episode()
-        # for key, value in self.qvalues.items():
-        #     print(key, value)
-        # quit()
         if self.use_q_file and self.is_training:
             with open(self.q_file, 'wb') as q_file:
                 pickle.dump((self.episodes_so_far, self.accum_train_rewards, self.qvalues), q_file)
-        passenger_datafile = join('data', 'passenger_statistics.csv')
-        episode_rewards_file = join('data', 'episode_rewards.csv')
+        passenger_datafile = join('data', 'passenger_statistics_{}_{}.csv'.format(append_name, self.num_training))
+        episode_rewards_file = join('data', 'episode_rewards_{}_{}.csv'.format(append_name, self.num_training))
         # TODO: MAKE STATISTICS FILENAME VARIABLE
         with open(passenger_datafile, 'a') as f:
             if not os.path.isfile(passenger_datafile):

@@ -94,7 +94,7 @@ class PassengerTransferEvent(Event):
         else:
             self.passenger.exit_elevator(self.elevator_state, simulator.now(), simulator.environment)
         
-        simulator.environment.update_accumulated_cost(self.time, simulator)
+        simulator.environment.update_accumulated_cost(simulator, self.time)
         simulator.environment.last_accumulator_event_time = self.time
 
     def __repr__(self):

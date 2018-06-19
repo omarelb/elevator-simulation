@@ -41,6 +41,7 @@ class QLearningAgent(ReinforcementAgent):
     def __init__(self, **args):
         "You can initialize Q-values here..."
         ReinforcementAgent.__init__(self, **args)
+        args['q_file'] = args['q_file'] + '_' + str(self.num_training) + '.pkl'
         if args['use_q_file'] and os.path.isfile(args['q_file']):
             with open(args['q_file'], 'rb') as q_file:
                 self.episodes_so_far, self.accum_train_rewards, self.qvalues = pickle.load(q_file)
@@ -111,6 +112,8 @@ class QLearningAgent(ReinforcementAgent):
 
         if self.is_training:
             prob_stop = self.prob_stop(qvalues, self.temperature())
+            logger.info('state:{}:qvalues(stop,continue):{}:temperature:{}:prob_stop:{}'.format(
+                        learning_state, qvalues, self.temperature(), prob_stop))
             if random.random() < prob_stop:
                 return env.ElevatorState.STOP
             return env.ElevatorState.CONTINUE
