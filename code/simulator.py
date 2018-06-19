@@ -1,9 +1,11 @@
+import pyximport; pyximport.install()
 import heapq
 import logging
 import configparser  # parse configuration files
 import numpy.random as rnd
 import os
 import random
+import time
 
 from os.path import join
 
@@ -13,10 +15,10 @@ import learningAgents
 from environment import Environment, Floor, ElevatorState, Passenger
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 formatter = logging.Formatter('%(levelname)s:%(name)s:%(message)s')
 file_handler = logging.FileHandler(join(const.LOG_DIR, 'simulator.log'), mode='w')
-file_handler.setLevel(logging.DEBUG)
+file_handler.setLevel(logging.WARNING)
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
@@ -46,7 +48,7 @@ class Simulator:
         self.events = []
         self.seed = seed
         self.max_time = max_time
-        random.seed(a=seed)
+        # random.seed(a=seed)
         # self.environment = Environment(kwargs['num_floors'], kwargs['num_elevators'], kwargs['traffic_profile'],
         #                                kwargs['interfloor'], kwargs['controller'])
         self.environment = Environment(**args)
@@ -133,6 +135,7 @@ class Simulator:
         Handle everything that needs to be handled when episode ends.
         """
         # TODO: shutdown episode and possibly restart new one depending on parameters
+        print('stopping episode')
         self.environment.stop_episode()
 
     def reset(self):
@@ -178,9 +181,9 @@ if __name__ == '__main__':
     parser.add_argument("-n", "--num_episodes", type=int, help='number of episodes to run. overrides calculated number of episodes from annealing factor.')
     parsed_args = parser.parse_args()
     config_file = parsed_args.config
+    args = parse_config(config_file)
     if parsed_args.testing:
         args['use_q_file'] = False
-    args = parse_config(config_file)
     if parsed_args.num_episodes:
         args['num_episodes'] = parsed_args.num_episodes
     args['verbose'] = parsed_args.verbose
@@ -191,6 +194,7 @@ if __name__ == '__main__':
     else:
         num_episodes = args['num_testing_episodes']
     
+    print('running for {} episodes'.format(num_episodes))
     for i in range(num_episodes):
         print('starting episode {}'.format(i))
         sim.run()

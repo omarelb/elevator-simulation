@@ -16,8 +16,8 @@
 import time
 import math
 import pickle
-import shutil  # copying iostream to file
 import os
+import csv
 
 from os.path import join
 
@@ -167,6 +167,7 @@ class ReinforcementAgent(ValueEstimationAgent):
         # self.start_alpha = float(start_alpha)
         self.beta = float(beta)
         self.use_q_file = args['use_q_file']
+        args['q_file'] = args['q_file'] + '_' + str(self.num_training) + '.pkl'
         self.q_file = args['q_file']
         self.qvalues = None
 
@@ -222,34 +223,40 @@ class ReinforcementAgent(ValueEstimationAgent):
         if self.episodes_so_far == 0:
             print('Beginning %d episodes of Training' % (self.num_training))
 
-    def final(self, stream):
+    def final(self, passenger_statistics):
         """
         Called by environment at the terminal state
 
         Parameters
         ----------
-        stream : StringIO
-            containing passenger statistics in csv format. to be written to file
+        passenger_statistics : list
+            containing tuples (waiting_time, boarding_time, system_time, waiting_time > 60)
+            for each passenger in the simulation. Averages need to be written to file.
         """
+        append_name = 'train' if self.is_training else 'test'
         self.stop_episode()
-        # for key, value in self.qvalues.items():
-        #     print(key, value)
-        # quit()
         if self.use_q_file and self.is_training:
             with open(self.q_file, 'wb') as q_file:
                 pickle.dump((self.episodes_so_far, self.accum_train_rewards, self.qvalues), q_file)
-        passenger_datafile = join('data', 'passenger_statistics.csv')
-        exists = False
-        if os.path.isfile(passenger_datafile):
-            exists = True
+        passenger_datafile = join('data', 'passenger_statistics_{}_{}.csv'.format(append_name, self.num_training))
+        episode_rewards_file = join('data', 'episode_rewards_{}_{}.csv'.format(append_name, self.num_training))
         # TODO: MAKE STATISTICS FILENAME VARIABLE
         with open(passenger_datafile, 'a') as f:
-            if not exists:
-                f.write('episode,waiting_time,boarding_time\r\n')
-            stream.seek(0)
-            shutil.copyfileobj(stream, f)
+            if not os.path.isfile(passenger_datafile):
+                f.write('episode,waiting_time,boarding_time,system_time,threshold\r\n')
+            avg_waiting = sum([x[0] for x in passenger_statistics]) / len(passenger_statistics)
+            avg_boarding = sum([x[1] for x in passenger_statistics]) / len(passenger_statistics)
+            avg_system = sum([x[2] for x in passenger_statistics]) / len(passenger_statistics)
+            avg_threshold = sum([x[3] for x in passenger_statistics]) / len(passenger_statistics)
+            csv_writer = csv.writer(f)
+            csv_writer.writerow((self.episodes_so_far, avg_waiting, avg_boarding, avg_system, avg_threshold))
         # TODO: Parameterize data_dir and csv filename depending on training, etc.
 
+        with open(episode_rewards_file, 'a') as f:
+            if not os.path.isfile(episode_rewards_file):
+                f.write('episode,cost\r\n')
+            csv_writer = csv.writer(f)
+            csv_writer.writerow((self.episodes_so_far, self.episode_rewards))
         # Make sure we have this var
         if 'episode_start_time' not in self.__dict__:
             self.episode_start_time = time.time()

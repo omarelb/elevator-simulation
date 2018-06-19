@@ -19,4 +19,4 @@ BScEORthesis-template-and-guide.pdf
 *.toc
 *.pyc
 *.csv
-
+*.pkl

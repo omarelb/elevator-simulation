@@ -1,17 +1,3 @@
-# util.py
-# -------
-# Licensing Information:  You are free to use or extend these projects for
-# educational purposes provided that (1) you do not distribute or publish
-# solutions, (2) you retain this notice, and (3) you provide clear
-# attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
-# 
-# Attribution Information: The Pacman AI projects were developed at UC Berkeley.
-# The core projects and autograders were primarily created by John DeNero
-# (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
-# Student side autograding was added by Brad Miller, Nick Hay, and
-# Pieter Abbeel (pabbeel@cs.berkeley.edu).
-
-
 import sys
 import inspect
 import random
@@ -261,16 +247,12 @@ def boltzmann(values, temperature):
     tuple
         boltzmann distribution values for first and second element
     """
-    x = values[0] / temperature
-    y = values[1] / temperature
-    try:
-        x = math.exp(x)
-    except OverflowError:
-        return (1, 0)
-    try:
-        y = math.exp(y)
-    except OverflowError:
-        return (0, 1)
+    # normalize input to prevent blowing up exponential
+    values = [x / temperature for x in values]
+    max_ = max(values)
+    values = [x - max_ for x in values]
+    x = math.exp(values[0])
+    y = math.exp(values[1])
     return (x / (x + y), y / (x + y))
 
 
@@ -294,70 +276,9 @@ def normalize(vector_or_counter):
         return [el / s for el in vector]
 
 
-def nSample(distribution, values, n):
-    if sum(distribution) != 1:
-        distribution = normalize(distribution)
-    rand = [random.random() for i in range(n)]
-    rand.sort()
-    samples = []
-    samplePos, distPos, cdf = 0,0, distribution[0]
-    while samplePos < n:
-        if rand[samplePos] < cdf:
-            samplePos += 1
-            samples.append(values[distPos])
-        else:
-            distPos += 1
-            cdf += distribution[distPos]
-    return samples
-
-
-def sample(distribution, values=None):
-    if type(distribution) == Counter:
-        items = sorted(distribution.items())
-        distribution = [i[1] for i in items]
-        values = [i[0] for i in items]
-    if sum(distribution) != 1:
-        distribution = normalize(distribution)
-    choice = random.random()
-    i, total = 0, distribution[0]
-    while choice > total:
-        i += 1
-        total += distribution[i]
-    return values[i]
-
-
-def sampleFromCounter(ctr):
-    items = sorted(ctr.items())
-    return sample([v for k,v in items], [k for k,v in items])
-
-
-def getProbability(value, distribution, values):
-    """
-      Gives the probability of a value under a discrete distribution
-      defined by (distributions, values).
-    """
-    total = 0.0
-    for prob, val in zip(distribution, values):
-        if val == value:
-            total += prob
-    return total
-
-
 def flip_coin(p):
     r = random.random()
     return r < p
-
-
-def chooseFromDistribution(distribution):
-    "Takes either a counter or a list of (prob, key) pairs and samples"
-    if type(distribution) == dict or type(distribution) == Counter:
-        return sample(distribution)
-    r = random.random()
-    base = 0.0
-    for prob, element in distribution:
-        base += prob
-        if r <= base:
-            return element
 
 
 def sign(x):
@@ -368,90 +289,3 @@ def sign(x):
         return 1
     else:
         return -1
-
-
-def arrayInvert(array):
-    """
-    Inverts a matrix stored as a list of lists.
-    """
-    result = [[] for i in array]
-    for outer in array:
-        for inner in range(len(outer)):
-            result[inner].append(outer[inner])
-    return result
-
-
-def matrixAsList(matrix, value=True):
-    """
-    Turns a matrix into a list of coordinates matching the specified value
-    """
-    rows, cols = len(matrix), len(matrix[0])
-    cells = []
-    for row in range(rows):
-        for col in range(cols):
-            if matrix[row][col] == value:
-                cells.append((row, col))
-    return cells
-
-# def lookup(name, namespace):
-#     """
-#     Get a method or class from any imported module from its name.
-#     Usage: lookup(functionName, globals())
-#     """
-#     dots = name.count('.')
-#     if dots > 0:
-#         moduleName, objName = '.'.join(name.split('.')[:-1]), name.split('.')[-1]
-#         module = __import__(moduleName)
-#         return getattr(module, objName)
-#     else:
-#         modules = [obj for obj in namespace.values() if str(type(obj)) == "<type 'module'>"]
-#         options = [getattr(module, name) for module in modules if name in dir(module)]
-#         options += [obj[1] for obj in namespace.items() if obj[0] == name ]
-#         if len(options) == 1: return options[0]
-#         if len(options) > 1: raise Exception, 'Name conflict for %s'
-#         raise Exception, '%s not found as a method or class' % name
-
-# code to handle timeouts
-#
-# FIXME
-# NOTE: TimeoutFuncton is NOT reentrant.  Later timeouts will silently
-# disable earlier timeouts.  Could be solved by maintaining a global list
-# of active time outs.  Currently, questions which have test cases calling
-# this have all student code so wrapped.
-#
-# import signal
-# import time
-# class TimeoutFunctionException(Exception):
-#     """Exception to raise on a timeout"""
-#     pass
-
-
-# class TimeoutFunction:
-#     def __init__(self, function, timeout):
-#         self.timeout = timeout
-#         self.function = function
-
-#     def handle_timeout(self, signum, frame):
-#         raise TimeoutFunctionException()
-
-#     def __call__(self, *args, **keyArgs):
-#         # If we have SIGALRM signal, use it to cause an exception if and
-#         # when this function runs too long.  Otherwise check the time taken
-#         # after the method has returned, and throw an exception then.
-#         if hasattr(signal, 'SIGALRM'):
-#             old = signal.signal(signal.SIGALRM, self.handle_timeout)
-#             signal.alarm(self.timeout)
-#             try:
-#                 result = self.function(*args, **keyArgs)
-#             finally:
-#                 signal.signal(signal.SIGALRM, old)
-#             signal.alarm(0)
-#         else:
-#             startTime = time.time()
-#             result = self.function(*args, **keyArgs)
-#             timeElapsed = time.time() - startTime
-#             if timeElapsed >= self.timeout:
-#                 self.handle_timeout(None, None)
-#         return result
-
-
