@@ -1,4 +1,39 @@
 \section{Discussion}
 
+omniscience vs on-line
 
-omnisciensce vs on-line
+
+\subsection{Simulator}
+
+To train the algorithm, a simulator was built. It is practically impossible to build a simulator that replicates the real world exactly. To deal with motion of the elevator, for instance, many details like how to achieve acting forces on the elevator were left aside. Passenger arrivals are usually modeled while by a Poisson process, although this does not need be the true process. The Poisson assumption simplifies the simulation of arrivals though, as interarrival times can be drawn from an exponential distribution. We also assume that the time it takes for passengers to enter or exit the elevator is 1 second. Other approaches model loading time as a random variable with a mean 1 truncated Erlang distribution. We sample the state of the environment every 0.01 seconds and update accordingly. It can be imagined that sampling more frequently increases accuracy of calculations, but increases simulation running time. The sampling frequency is chosen while weighing these two factors against each other. The specifics of the modelling of elevator motion are described in Appendix \ref{sec:app:elevator_motion}.
+
+
+\subsection{Exploration Strategy}
+
+To make sure we keep exploring actions that seem suboptimal at a current timestep, we use the Boltzmann distribution over the $Q$-values (Section \ref{sec:action_selection}). One of the other commonly used exploration strategies is called $\epsilon$-greedy. Using this strategy, an agent takes the (what it thinks to be) optimal action with probability $1-\epsilon$ and assigns probability $\epsilon$ to the other actions. The disadvantage of this method compared to Boltzmann action selection is that it does not take into account the degree to which $Q$-values differ.
+
+There are shortcomings to the Boltzmann strategy as well though. It estimates a measure of how optimal the agent thinks the action is, not how certain it is about that optimality. While this is useful information, it is not exactly what would best aid exploration. What we really want to understand is the agent’s uncertainty about the value of different actions. There are other strategies such as Bayesian approaches that perform better, but are more complex to implement.
+
+\subsection{Action Constraints}
+
+Focusing the experience of the learning agent onto the most appropriate areas of the state space is important \cite{barto.bradt-1995}. Constraining the possible actions to take is done exactly for this reason. Here we discuss the choice of some of the action constraints and possible implications and improvements.
+
+\begin{itemize}
+    \item \textit{A car can stop at a floor only if there is a call from this floor or there
+    is a car call to this floor.}
+
+    This constraint was imposed when modelling a multi-agent setting. However, in the case of 1 car, it may substantially worsen performance {\color{red}(CHECK THIS OUT FURTHER)}. If the car was moving down and a new passenger arrived above it while no passengers are under it, it would have to continue on to the ground floor before being able to turn. We look at the implications of removing this constraint.
+
+    \item \textit{Given a choice between moving up and down, it should prefer to move up.}
+    
+    This constraint was chosen in the interest of having less actions to learn, which decreases complexity and learning time. Since the traffic profile studies in this case, down-peak traffic, tends to push the cars toward the bottom of the building, we assume it is generally more preferable to move upwards. This changes when we deal with traffic profiles that have more interfloor traffic. In that case, it becomes more important to learn whether moving up or down is the better choice.
+\end{itemize}
+
+\subsection{Multi-Agent}
+
+To keep complexity at bay, we have only considered a building with a single elevator. A bulding with more elevators corresponds to a multi-agent environment. Multi-agent environments are harder to deal with, because of added stochasticity and non-stationarity due to the
+changing stochastic policies of the other agents.
+
+\subsection{Traffic Profiles}
+
+We have trained the controller only on the down-peak traffic profile. In a real elevator system, it would have to be trained on other traffic profiles, such as up-peak and interfloor, as well. Other actions would have to be introduced as well. For instance, it would be useful to have actions to open and close the doors in up-peak traffic. It may also be possible to then learn when to switch between traffic profiles. 

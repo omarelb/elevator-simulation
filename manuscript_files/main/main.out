@@ -1,0 +1,33 @@
+\BOOKMARK [1][-]{section.1}{Introduction}{}% 1
+\BOOKMARK [1][-]{section.2}{Reinforcement Learning}{}% 2
+\BOOKMARK [2][-]{subsection.2.1}{Exploration and Exploitation}{section.2}% 3
+\BOOKMARK [2][-]{subsection.2.2}{Elements of Reinforcement Learning}{section.2}% 4
+\BOOKMARK [2][-]{subsection.2.3}{Markov Decision Process}{section.2}% 5
+\BOOKMARK [2][-]{subsection.2.4}{Returns}{section.2}% 6
+\BOOKMARK [2][-]{subsection.2.5}{Policies}{section.2}% 7
+\BOOKMARK [2][-]{subsection.2.6}{Value Functions}{section.2}% 8
+\BOOKMARK [2][-]{subsection.2.7}{Optimality}{section.2}% 9
+\BOOKMARK [1][-]{section.3}{Model of the System}{}% 10
+\BOOKMARK [2][-]{subsection.3.1}{System Dynamics}{section.3}% 11
+\BOOKMARK [2][-]{subsection.3.2}{State Space}{section.3}% 12
+\BOOKMARK [2][-]{subsection.3.3}{Action Set}{section.3}% 13
+\BOOKMARK [2][-]{subsection.3.4}{Performance Measures and Reward}{section.3}% 14
+\BOOKMARK [2][-]{subsection.3.5}{Simulation}{section.3}% 15
+\BOOKMARK [2][-]{subsection.3.6}{Traffic and Passenger Arrival}{section.3}% 16
+\BOOKMARK [1][-]{section.4}{The Algorithm}{}% 17
+\BOOKMARK [2][-]{subsection.4.1}{Q-learning}{section.4}% 18
+\BOOKMARK [2][-]{subsection.4.2}{Function Updates}{section.4}% 19
+\BOOKMARK [2][-]{subsection.4.3}{Calculating Omniscient Reinforcements}{section.4}% 20
+\BOOKMARK [2][-]{subsection.4.4}{Making Decisions and Updating Q-Values}{section.4}% 21
+\BOOKMARK [1][-]{section.5}{Results and Analysis}{}% 22
+\BOOKMARK [2][-]{subsection.5.1}{Annealing Schedules}{section.5}% 23
+\BOOKMARK [1][-]{section.6}{Discussion}{}% 24
+\BOOKMARK [2][-]{subsection.6.1}{Simulator}{section.6}% 25
+\BOOKMARK [2][-]{subsection.6.2}{Exploration Strategy}{section.6}% 26
+\BOOKMARK [2][-]{subsection.6.3}{Action Constraints}{section.6}% 27
+\BOOKMARK [2][-]{subsection.6.4}{Multi-Agent}{section.6}% 28
+\BOOKMARK [2][-]{subsection.6.5}{Traffic Profiles}{section.6}% 29
+\BOOKMARK [1][-]{appendix.A}{Appendix}{}% 30
+\BOOKMARK [2][-]{subsection.A.1}{Boltzmann Instability}{appendix.A}% 31
+\BOOKMARK [2][-]{subsection.A.2}{Solving Return Integral}{appendix.A}% 32
+\BOOKMARK [2][-]{subsection.A.3}{Elevator Motion}{appendix.A}% 33

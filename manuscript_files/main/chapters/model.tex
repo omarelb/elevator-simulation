@@ -3,20 +3,20 @@
 This section introduces the model of the elevator system studied here. The modelling approach is similar to the one used by \cite{walczak2006, crites_barto_1998}. We use this model in all further analysis.
 
 \subsection{System Dynamics}
-The system dynamics are parameterized as follows:
+The system dynamics are parameterized as follows (as in \cite{pepyne_96}):
 
 \begin{itemize}
-    \item Number of floors: ?.
-    \item Number of elevator cars: 1 {\color{red}for now?}. We consider only a single elevator to simplify the problem.
+    \item Number of floors: 5.
+    \item Number of elevator cars: 1.
+    \item Elevator maximum speed: 2.54 m/s.
     \item Elevator floor time (time it takes for an elevator to pass a floor at full speed): 1.45 seconds.
-    \item Elevator stop time (time it takes for the elevator to decelarate, open and close the doors, and accelerate again): 7.19 seconds.
-    \item Elevator load time (the time it takes for a passenger to enter or exit the elevator): random variable from a 20\textit{th} order truncated Erlang distribution with a range from 0.6 to 6 seconds and a mean of 1 second.
-    % \item Floor height. Set to ?? here.
+    \item Elevator acceleration time (time it takes for an elevator accelerate from a stop to full speed or decelerate from full speed to a stop): 3.595 seconds.
+    \item Elevator load time (the time it takes for a passenger to enter or exit the elevator): 1 second.
+    \item Floor height: 3.66 meters.
     \item Capacity of the cars: 20 passengers.
-    % \item Maximum number of passengers waiting for an elevator: 2 passengers.
 \end{itemize}
 
-Passengers can arrive on any floor, where they can press either the up or down button. We call this a hall call. After an elevator arrives at the passenger's floor, they get in and press a button to a floor in the same direction as the elevator. We call this a car call.
+Passengers can arrive on any floor, where they can press either the up or down button. We call this a \textbf{hall call}. After an elevator arrives at the passenger's floor, they get in and press a button to a floor in the same direction as the elevator. We call this a \textbf{car call}.
 
 An elevator system can be very complex, with events such as passenger and elevator arrivals happening asynchronously. Even though time is continuous, it is still possible to model the elevator system as a discrete event system, where significant events happen at discrete times, with the time between them taking on a continuous value. In this case, the constant discount factor $\gamma$ used in most discrete-time reinforcement learning algorithms is inappropriate. Instead, we take into account the amount of time between events using a time varying discount factor \cite{bradtke_94}. This is also done to take into account the asynchronicity of events that is well suited to the elevator model. We define returns as the total discounted reward received over time:
 \begin{equation}
@@ -29,7 +29,7 @@ where we integrate over continuous time, instead of the usual discrete-time rein
     \sum_{t=0}^{\infty} \gamma^t r_t.
 \end{equation*}
 
-Here, $r_t$ is the immediate cost in the system at discrete time $t$, $r_\tau$ is the instantaneous cost at continuous time $\tau$ and $\beta > 0$ is a parameter used to control the rate of exponential decay. A system with a higher $\beta$ cares more about rewards that are closer in time. The environment is thusly modeled as a discrete-time Markov Decision Process with a finite number of states and actions. Using this approach, the states and actions can be fully specified.
+Here, $r_t$ is the immediate cost in the system at discrete time $t$, $r_\tau$ is the instantaneous cost at continuous time $\tau$ and $\beta > 0$ is a parameter used to control the rate of exponential decay. A system with a higher $\beta$ cares more about rewards that are closer in time. The environment is thusly modeled as a discrete-time Markov pecision process with a finite number of states and actions. Using this approach, the states and actions can be fully specified.
 
 The model parameters have been chosen such that the state space is finite and reasonably sized. This is of great importance when using algorithms in which it is necessary to store values for each state, so called tabular methods. If the state space is too large, running time and memory capacity can become intractable. We would need to approximate the value functions. 
 
@@ -37,13 +37,7 @@ The model parameters have been chosen such that the state space is finite and re
 
 It is not possible to observe the full state of the system. After a button is pressed, the elevator controller does not know if another passenger arrived after the first one. One way to deal with this is assuming \textit{omniscience}. We assume that in every state, the elevator controller knows how many passengers are waiting at a floor, when they arrived and where they are going. This can then be used to calculate the reinforcement signals. An important thing to note here is that it is not the controller that is receiving this extra information, it is the critic \textit{evaluating} the controller. This information is only important in the training phase. Once the controller is trained, it can be implemented in a real system without needing the extra knowledge.
 
-Another possibility is to let the system learn using only information that would be available to the system on-line. The arrival times of passengers after the first would have to be estimated, so that expected costs can still be computed. We use omniscient reinforcements, since they are slightly more accurate and results will not differ by a large margin \cite{crites_barto_group_1998}. 
-
-\subsection{Traffic and Passenger Arrival}
-
-It is important to take into account the traffic profile at a time. General building traffic profiles have been identified \cite{elevator_dynamics}. Four important profiles are up-peak, down-peak, inter-floor, and lunchtime. We will concern ourselves only with the down-peak traffic profile. Down-peak is a traffic pattern in which passengers are primarily moving down to the ground floor. An example is people going home at the end of a business day in an office building. {\color{red} We will assume every arriving passenger wants to go to the ground floor. (maybe)}
-
-We model the arrival of passengers as a Poisson process with rate parameter $\lambda$ being the expected number of people arriving at a floor each minute. The rate can vary across floors {\color{red} and time (maybe)}. We set it to ??. For every floor, passenger interarrival time is  drawn from an exponential distribution with rate $\lambda$.
+Another possibility is to let the system learn using only information that would be available to the system on-line. The arrival times of passengers after the first would have to be estimated, so that expected costs can still be computed. We use omniscient reinforcements, since they are slightly more accurate and results will not differ by a large margin \cite{crites_barto_group_1998}.
 
 \subsection{State Space}
 
@@ -58,7 +52,7 @@ An elevator controller maps state information to decisions. The definition of th
     \item calls to which particular elevators are allocated.
 \end{itemize}
 
-If we assume the state is defined as above, it is possible to estimate the size of the resulting state space. Let $n$ be the number of floors and $m$ the number of elevators {\color{red} to notation?}, the size of the state space can be estimated as follows:
+If we assume the state is defined as above, it is possible to estimate the size of the resulting state space. Let $n$ be the number of floors. The size of the state space can be estimated as follows:
 
 \begin{itemize}
     \item at most $n - 1$ up hall calls: $2^{n-1}$ possibilities,
@@ -88,8 +82,7 @@ Taking into account this particular aggregation of states, we can recalculate th
     \item the current moving direction: 3 possibilities,
 \end{itemize}
 
-which make for a total of $(n-1)^4 \cdot (n - 1) \cdot n \cdot 3$ possible states. This is a vastly smaller amount than before the aggregation. In fact, it is not exponential in $n$ anymore. Such a size would allow for us to use tabular methods instead of value function approximators, given moderate sizes of $n$ and $m$. Note also that a large subset of states will (almost) never be visited under normal conditions, reducing the effective state space size even further. {\color{red} probabilistic analysis number of states visited on average}
-
+which make for a total of $(n-1)^4 \cdot (n - 1) \cdot n \cdot 3$ possible states. This is a vastly smaller amount than before the aggregation. In fact, it is not exponential in $n$ anymore. Such a size would allow for us to use tabular methods instead of value function approximators, given moderate sizes of $n$ and $m$. Note also that a large subset of states will (almost) never be visited under normal conditions, reducing the effective state space size even further.
 
 % However, if the states are defined in too much detail, the number of states may become too large. 
 
@@ -117,15 +110,14 @@ The system considered is event-based. There are two main types of events. Events
 
 This approach equals that of \cite{crites_barto_1998, crites_barto_group_1998}, but differs from the approach used in \cite{walczak2006}. They suggest that instead of using the 2 aforementioned actions, an elevator chooses a floor to serve and commits to that action, under a couple of other constraints. This has wider applicability to practical elevator systems, where the stopping distance for an elevator moving at full speed is longer than half of the distance between floors. Another advantage is the ability to announce the arrival of the car several seconds beforehand. Passengers are given more time to go towards the entrance of the elevator. Although it has practical advantages, it makes the learning task more difficult. Instead of 2 possible actions, at most $n$ actions can be taken at each state.
 
-There are additional restrictions on what actions can be taken:
+In an attempt to build in some basic prior knowledge, we add additional restrictions on what actions can be taken:
 
 \begin{itemize}
     \item When at the bottom and top floors, we can not choose the action go down and go up respectively. We cannot continue past the bottom and top floors.
-    \item We can not turn in a single action. If the current direction is up, for example, we have to first stop the elevator before we can go down.
-    \item A car cannot turn until it has served all the calls in its current direction.
+    \item A car cannot turn until it has served all the car calls in its current direction.
     \item A car can stop at a floor only if there is a call from this floor or there
     is a car call to this floor.
-    \item A car cannot stop to pick up passengers at a floor if another car is already stopped there.
+    % \item A car cannot stop to pick up passengers at a floor if another car is already stopped there.
     \item Given a choice between moving up and down, it should prefer to move up (since
     the down-peak traffic tends to push the cars toward the bottom of the building).
 \end{itemize}
@@ -139,12 +131,33 @@ In a Reinforcement Learning setting, reinforcement is usually formulated as maxi
 Since time between events is continuous, we consider instantaneous costs at continuous time moments. For $\tau \in [t_1, t_2]$, where $t_1$ is the time of taking an action for an elevator (i.e. deciding to continue past the next floor or stop) and $t_2$ is the time when the next decision is required, the reinforcement $r_\tau$ is defined as follows:
 
 \begin{equation}
-    r_\tau = \sum_p (\tau - t_1 + w_p)^2
+    r_\tau = \sum_{p\in P} (\tau - t_1 + w_p)^q
 \end{equation}
 
-where $w_p$ is the amount of time each passenger $p$ waiting at time $t_2$ has already waited at
-time $t_1$. Special care is needed to handle any passengers that begin or end waiting between
-$t_1$ and $t_2$. {\color{red} See Section ??}
+where $q$ is any positive real, $P$ is the set of passengers waiting at time $t_2$ and $w_p$ is the amount of time a passenger $p\in P$ has already waited at time $t_1$. It should be noted that $w_p$ does not depend on $\tau$. Special care is needed to handle any passengers that begin or end waiting between $t_1$ and $t_2$, which is addressed in section \ref{sec:omniscient}
+
+We choose to set $q=2$. A quadratic function has nice properties and makes it easy to compute the return integral. Furthermore, if $q$ were lower, very high waiting times would not be punished as much.
 
 % Although the reinforcement value as above is passed to the learner that selected its action and time $t_1$ and completed its action at time $t_2$, the calculation includes the waiting times of all hall calls and car calls for other
 % elevators as well.
+\subsection{Simulation}
+
+The controller learns to act from experience. This experience is generated by simulation. We simulate an hour of elevator elevator traffic and call that an episode. Every episode, the environment is reset to an initial state and passenger arrivals are generated. We can distinguish between two types of episodes, training and testing. In training episodes, we still take actions with suboptimal q values to keep exploring and estimating these values. In testing episodes, however, the training is done and only actions that are regarded as optimal will be taken. Further simulation specifics can be found in Appendix {\color{red}(??)}
+
+\subsection{Traffic and Passenger Arrival}
+
+It is important to take into account the traffic profile at a time. General building traffic profiles have been identified \cite{elevator_dynamics}. Four important profiles are up-peak, down-peak, inter-floor, and lunchtime. We will concern ourselves only with the down-peak traffic profile. Down-peak is a traffic pattern in which passengers are primarily moving down to the ground floor. An example is people going home at the end of a business day in an office building.
+
+We model the arrival of passengers as a Poisson process with rates that fluctuate throughout the day. Table \ref{tab:rates} shows the expected number of passengers arriving at each floor in 5-minute intervals. Of these arriving passengers, 90\% are headed for the ground floor, while the rest is inter-floor traffic. 
+
+% Please add the following required packages to your document preamble:
+\begin{table}[h]
+    \centering
+    \caption{Arrival rates for the down-peak traffic profile.}
+    \label{tab:rates}
+    \begin{tabular}{@{}lllllllllllll@{}}
+    \toprule
+    Time & 00   & 05  & 10 & 15 & 20  & 25 & 30 & 35   & 40  & 45   & 50   & 55  \\ \midrule
+    Rate & 0.25 & 0.5 & 1  & 1  & 4.5 & 3  & 2  & 1.75 & 4.5 & 1.25 & 0.75 & 0.5 \\ \bottomrule
+    \end{tabular}
+    \end{table}

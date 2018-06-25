@@ -16,7 +16,7 @@ Besides the agent and the environment, there are four important subelements in a
 
 A model of the environment describes the (probabilistic) behavior of the environment. It allows for predictions about the environment’s behavior to be made. For example, given a state and action, the model might predict the next state and next reward.
 
-\subsection{Markov Decision Processes}
+\subsection{Markov Decision Process}
 
 The concepts of reinforcement learning, continuous interaction between an agent and its environment, are formalized as a Markov decision process (MDP). The agent selects actions using some strategy and the environment reacts by presenting the agent new situations. The environment also emits rewards. The agent seeks to maximize its rewards over time by adapting its strategy. See figure \ref{fig:agent_environment}.
 
@@ -27,7 +27,7 @@ The concepts of reinforcement learning, continuous interaction between an agent 
     \label{fig:agent_environment}
 \end{figure}
 
-In a discrete-time MDP, the agent and environment interact at each of a sequence of discrete time steps, $t = 0, 1, 2, 3, \dots$. At each time step $t$, the agent receives some representation of the environment’s state, $S_t \in \S$, and selects an action, $A_t \in \mathcal{A}(s)$ depending on the observed state. One time step later, partly as a result of its action, the agent receives a reward, $R_{t+1} \in \mathcal{R} \subseteq \mathbb{R}$, and is presented with finds itself in a new state, $S_{t+1}$. 
+In a discrete-time MDP, the agent and environment interact at each of a sequence of discrete time steps, $t = 0, 1, 2, 3, \dots$. At each time step $t$, the agent receives some representation of the environment’s state, $S_t \in \S$, and selects an action, $A_t \in \mathcal{A}(s)$ depending on the observed state. One time step later, partly as a result of its action, the agent receives a reward, $R_{t+1} \in \mathcal{R} \subseteq \mathbb{R}$, and finds itself in a new state, $S_{t+1}$. 
 
 In a finite MDP, the sets of states, actions, and rewards ($\mathcal{S}$, $\mathcal{A}$, and $\mathcal{R}$) all have a finite number of elements. In this case, the random variables $R_t$ and $S_t$ have a well defined discrete probability distributions dependent only on the previous state and action. That is, for particular values of these random variables, $s' \in \mathcal{S}$ and $r \in \mathcal{R}$, the probability of those values occurring at time $t$ given values of the previous state and action is given by
 \[
@@ -42,24 +42,24 @@ The probabilities given by the function $p$ completely determine the dynamics of
 A reward signal defines the goal in a reinforcement learning problem. The reward signal thus defines what the good and bad events for the agent are. The agent’s objective is to maximize the total reward it receives over the long run. If an action selected by the policy is followed by low reward, the policy may be changed to select some other action in that same situation in the future.
 
 Let $R_{t+1}, R_{t+2}, R_{t+3}, \dots$ denote the sequence of rewards received after time step $t$. Generally, we want to maximize the expected return $G_t$, which is some specific function of the reward sequence. For our specific task, we define this to be the sum of discounted future rewards
-\[
-G_t \coloneqq R_{t+1} + \gamma R_{t+2} + \gamma^2 R_{t+3} + \cdots = \sum_{k=0}^{\infty} \gamma^{k}R_{t+k+1}
-\]
+\begin{equation}
+    G_t \coloneqq R_{t+1} + \gamma R_{t+2} + \gamma^2 R_{t+3} + \cdots = \sum_{k=0}^{\infty} \gamma^{k}R_{t+k+1} \label{eq:returns}
+\end{equation}
 
 where $\gamma \in [0,1]$ is a parameter called the \textit{discount rate}.
 
-The discount rate determines the present value of future rewards: a reward received $k$ time steps in the future is worth only $\gamma^{k-1}$ times what it would be worth if it were received immediately. If $\gamma < 1$, the infinite sum in (??) has a finite value as long as the reward sequence $\{R_k\}$ is bounded. As $\gamma$ approaches 1, the objective takes future rewards into account more strongly.
+The discount rate determines the present value of future rewards: a reward received $k$ time steps in the future is worth only $\gamma^{k-1}$ times what it would be worth if it were received immediately. If $\gamma < 1$, the infinite sum in (\ref{eq:returns}) has a finite value as long as the reward sequence $\{R_k\}$ is bounded. As $\gamma$ approaches 1, the objective takes future rewards into account more strongly.
 
 Returns at successive time steps are related recursively:
-\begin{align}
+\begin{align*}
     G_t &\coloneqq R_{t+1} + \gamma R_{t+2} + \gamma^2 R_{t+3} + \gamma^3 R_{t+4} + \cdots \nonumber\\
     &= R_{t+1} + \gamma (R_{t+2} + \gamma R_{t+3} + \gamma^2 R_{t+4} + \cdots) \nonumber\\
     &= R_{t+1} + \gamma G_{t+1}.
-\end{align}
+\end{align*}
 
 \subsection{Policies}
 
-A policy defines the learning agent’s way of behaving, i.e. which actions it selects, at a given time. Roughly speaking, a policy is a mapping from perceived states of the environment to actions to be taken when in those states. The policy alone is sufficient to determine the agent's behavior.
+A policy defines the learning agent’s way of behaving, i.e. which actions it selects, at a given time. Roughly speaking, a policy is a mapping from states of the environment to actions to be taken when in those states. The policy alone is sufficient to determine the agent's behavior.
 
 Formally, a policy $\pi$ is a mapping from states to a probability distribution over the possible actions that can be selected in those states. If the agent is following policy $\pi$ at time $t$, then $\pi(a \cbar s)$ is the probability that $A_t = a$ if $S_t = s$. Reinforcement learning methods specify how the agent’s policy is changed as a result of its experience.
 
@@ -115,7 +115,7 @@ for $v_*(s)$, and
 \end{equation}
 for $q_*(s, a)$, for all $s \in \S$ and for all $a \in \mathcal{A}(s)$.
 
-For finite MDPs, the Bellman optimality equations have a unique solution.
+For finite MDPs, a solution to the Bellman optimality equations always exists.
 
 Having $q_*$ makes choosing optimal actions easy. For any state $s$, it can simply find any action that maximizes $q_*(s, a)$. It provides the optimal expected long-term return for each state-action pair. The optimal action-value function allows optimal actions to be selected without having to know anything about the environment’s dynamics.
 

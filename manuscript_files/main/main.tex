@@ -11,6 +11,7 @@
 % \usepackage[mathcal]{euscript}
 \usepackage{mathtools}
 \usepackage{comment}
+\usepackage{booktabs} % fancy tables
 
 \usepackage{times} % use times new roman font
 \usepackage[T1]{fontenc} %?
@@ -18,7 +19,7 @@
 % for subgraphics
 \usepackage{caption}
 \usepackage{subcaption}
-
+\usepackage[hidelinks]{hyperref} % hyperlinks
 
 \usepackage{epstopdf} %?
 \usepackage{float}
@@ -34,7 +35,7 @@
 %%%%%%%%%%%% layout %%%%%%%%%%%%%%%%%%
 \usepackage[margin=3cm]{geometry}
 % you might enhance readability by increasing the distances between lines:
-%\renewcommand{\baselinestretch}{1.1}
+\renewcommand{\baselinestretch}{1.1}
 
 % header and footer stuff
 \usepackage{fancyhdr}
@@ -70,21 +71,24 @@
 %\usepackage{bibtex}
 %\addbibresource{thesis.bib}
 
-\graphicspath{ {img/} }
+\graphicspath{{img/}}
 
 % \includeonly{chapters/introduction}
+% \includeonly{chapters/notation}
 % \includeonly{chapters/reinforcement_learning}
 % \includeonly{chapters/model}
 % \includeonly{chapters/algorithms}
-\includeonly{chapters/introduction, chapters/reinforcement_learning, chapters/model, chapters/algorithms}
+% \includeonly{chapters/results}
+% \includeonly{chapters/conclusion}
+% \includeonly{chapters/discussion}
+\includeonly{chapters/introduction, chapters/notation, chapters/reinforcement_learning, chapters/model, chapters/algorithms, chapters/results, chapters/conclusion, chapters/discussion}
 
 \newcommand{\bigbar}{\ \Biggr\rvert\ }
 \newcommand{\cbar}{\ |\ }
 \newcommand{\E}{\mathbb{E}} % expectation
 \renewcommand{\S}{\mathcal{S}} % expectation
-    
+\newcommand*\diff{\mathop{}\!\mathrm{d}} % d in integral
 
-%%%%%%%%%%%%%%%% start document %%%%%%%%%%%
 \begin{document}
 
 %%%%%%%%%%%%%%% front page %%%%%%%%%%%%%%%%
@@ -102,6 +106,8 @@
         \vspace{1.5cm}
         
         \textbf{Omar Elbaghdadi}
+
+        (2577566)
         
         \vfill
         
@@ -146,8 +152,10 @@
 \newpage
 % can use input or include
 
+% summary of notation
+\include{chapters/notation}
 % Introduction of the thesis
-% \input{chapters/introduction}
+\input{chapters/introduction}
 
 % Introduction to reinforcement learning
 \include{chapters/reinforcement_learning}
@@ -157,13 +165,17 @@
 
 \include{chapters/algorithms}
 
-
 \include{chapters/results}
 
 \include{chapters/conclusion}
 
 \include{chapters/discussion}
 
+\newpage
+\appendix
+\input{chapters/appendix}
+
+\newpage
 \bibliographystyle{plain}
 \bibliography{thesis}
 %\printbibliography
