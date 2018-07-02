@@ -13,8 +13,9 @@ LOAD_TIME = 1
 FLOOR_TIME = 1
 
 # traffic constants
-# DOWNPEAK_RATES = (1, 2, 4, 4, 18, 12, 8, 7, 18, 5, 3, 2)
-DOWNPEAK_RATES = (0.25, 0.5, 1, 1, 4.5, 3, 2, 1.75, 4.5, 1.25, 0.75, 0.5)
+DOWNPEAK_RATES = (1, 2, 4, 4, 18, 12, 8, 7, 18, 5, 3, 2)
+# DOWNPEAK_RATES = (1 * 2 / 3, 2 * 2 / 3, 4 * 2 / 3, 4 * 2 / 3, 18 * 2 / 3, 12 * 2 / 3, 8 * 2 / 3, 7 * 2 / 3, 18 * 2 / 3, 5 * 2 / 3, 3 * 2 / 3, 2 * 2 / 3)
+# DOWNPEAK_RATES = (0.25, 0.5, 1, 1, 4.5, 3, 2, 1.75, 4.5, 1.25, 0.75, 0.5)
 
 # motion dynamics
 ACCEL_TIME = 3.595  # seconds to accelerate to full speed from zero.

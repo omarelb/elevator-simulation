@@ -1,22 +1,6 @@
-# learningAgents.py
-# -----------------
-# Licensing Information:  You are free to use or extend these projects for
-# educational purposes provided that (1) you do not distribute or publish
-# solutions, (2) you retain this notice, and (3) you provide clear
-# attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
-# 
-# Attribution Information: The Pacman AI projects were developed at UC Berkeley.
-# The core projects and autograders were primarily created by John DeNero
-# (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
-# Student side autograding was added by Brad Miller, Nick Hay, and
-# Pieter Abbeel (pabbeel@cs.berkeley.edu).
-
-# from game import Directions, Agent, Actions
-
 import time
 import math
 import pickle
-import os
 import csv
 
 from os.path import join
@@ -39,11 +23,12 @@ class Agent:
     cost_accumulator : float
         cost the agent has accumulated from last decision time until now
     """
-    def __init__(self, index=0):
+    def __init__(self, index=0, **args):
         self.index = index
         self.decision_time = 0
         # cost accumulator for an elevator.
         self.cost_accumulator = 0
+        self.episodes_so_far = 0
 
     def get_action(self, simulator):
         """
@@ -157,18 +142,18 @@ class ReinforcementAgent(ValueEstimationAgent):
         num_training : int
             number of training episodes, i.e. no learning after these many episodes
         """
-        temperature_end = 0.01
+        # temperature_end = 0.01
+        Agent.__init__(self, **args)
+        temperature_end = 0.001
         self.annealing_factor = args['annealing_factor']
         self.is_training = args['is_training']
         self.num_training = int(math.log(temperature_end / 2, self.annealing_factor))
-        self.episodes_so_far = 0
         self.accum_train_rewards = 0.0
         self.accum_test_rewards = 0.0
         # self.start_alpha = float(start_alpha)
         self.beta = float(beta)
         self.use_q_file = args['use_q_file']
-        args['q_file'] = args['q_file'] + '_' + str(self.num_training) + '.pkl'
-        self.q_file = args['q_file']
+        self.q_file = args['q_file'] + '_' + str(self.num_training) + '.pkl'
         self.qvalues = None
 
     def update(self, state, action, delta_reward):
@@ -194,7 +179,6 @@ class ReinforcementAgent(ValueEstimationAgent):
             self.accum_train_rewards += self.episode_rewards
         else:
             self.accum_test_rewards += self.episode_rewards
-        self.episodes_so_far += 1
         # TODO: IF MULTIPLE ELEVATORS, MAKE SURE THIS ONLY GETS CALLED ONCE
 
     def temperature(self):
@@ -223,40 +207,30 @@ class ReinforcementAgent(ValueEstimationAgent):
         if self.episodes_so_far == 0:
             print('Beginning %d episodes of Training' % (self.num_training))
 
-    def final(self, passenger_statistics):
+    def final(self, write_files, simulator):
         """
         Called by environment at the terminal state
 
         Parameters
         ----------
-        passenger_statistics : list
-            containing tuples (waiting_time, boarding_time, system_time, waiting_time > 60)
-            for each passenger in the simulation. Averages need to be written to file.
+        write_files : bool
+            write episode rewards file if true
+        episode_filename : str
+            characterize filename of episode rewards file
         """
         append_name = 'train' if self.is_training else 'test'
         self.stop_episode()
         if self.use_q_file and self.is_training:
             with open(self.q_file, 'wb') as q_file:
                 pickle.dump((self.episodes_so_far, self.accum_train_rewards, self.qvalues), q_file)
-        passenger_datafile = join('data', 'passenger_statistics_{}_{}.csv'.format(append_name, self.num_training))
-        episode_rewards_file = join('data', 'episode_rewards_{}_{}.csv'.format(append_name, self.num_training))
+        episode_rewards_file = join(simulator.data_dir, 'episode_rewards_{}_{}_{}.csv'.format(simulator.stats_file, append_name, self.num_training))
         # TODO: MAKE STATISTICS FILENAME VARIABLE
-        with open(passenger_datafile, 'a') as f:
-            if not os.path.isfile(passenger_datafile):
-                f.write('episode,waiting_time,boarding_time,system_time,threshold\r\n')
-            avg_waiting = sum([x[0] for x in passenger_statistics]) / len(passenger_statistics)
-            avg_boarding = sum([x[1] for x in passenger_statistics]) / len(passenger_statistics)
-            avg_system = sum([x[2] for x in passenger_statistics]) / len(passenger_statistics)
-            avg_threshold = sum([x[3] for x in passenger_statistics]) / len(passenger_statistics)
-            csv_writer = csv.writer(f)
-            csv_writer.writerow((self.episodes_so_far, avg_waiting, avg_boarding, avg_system, avg_threshold))
-        # TODO: Parameterize data_dir and csv filename depending on training, etc.
-
-        with open(episode_rewards_file, 'a') as f:
-            if not os.path.isfile(episode_rewards_file):
-                f.write('episode,cost\r\n')
-            csv_writer = csv.writer(f)
-            csv_writer.writerow((self.episodes_so_far, self.episode_rewards))
+        if write_files:
+            with open(episode_rewards_file, 'a') as f:
+                # if not os.path.isfile(episode_rewards_file):
+                #     f.write('episode,cost\r\n')
+                csv_writer = csv.writer(f)
+                csv_writer.writerow((self.episodes_so_far, self.episode_rewards))
         # Make sure we have this var
         if 'episode_start_time' not in self.__dict__:
             self.episode_start_time = time.time()

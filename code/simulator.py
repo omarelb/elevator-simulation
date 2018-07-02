@@ -42,16 +42,16 @@ class Simulator:
     max_time : float
         amount of time one episode should run for
     """
-    def __init__(self, seed=42, max_time=60 * 60, **args):
+    def __init__(self, max_time=60 * 60, **args):
         self.time_step = const.TIME_STEP
         self.time = 0
         self.events = []
-        self.seed = seed
         self.max_time = max_time
-        # random.seed(a=seed)
-        # self.environment = Environment(kwargs['num_floors'], kwargs['num_elevators'], kwargs['traffic_profile'],
-        #                                kwargs['interfloor'], kwargs['controller'])
+        if args['use_seed']:
+            random.seed(a=args['seed'])
         self.environment = Environment(**args)
+        self.stats_file = args['stats_file']
+        self.data_dir = args['data_dir']
 
     def start_episode(self):
         """
@@ -136,7 +136,7 @@ class Simulator:
         """
         # TODO: shutdown episode and possibly restart new one depending on parameters
         print('stopping episode')
-        self.environment.stop_episode()
+        self.environment.stop_episode(self)
 
     def reset(self):
         """
@@ -179,20 +179,27 @@ if __name__ == '__main__':
     parser.add_argument("-v", "--verbose", action='store_true', help='include this if you want a more verbose output')
     parser.add_argument("-t", "--testing", action='store_true', help='testing out program i.e. do not write files')
     parser.add_argument("-n", "--num_episodes", type=int, help='number of episodes to run. overrides calculated number of episodes from annealing factor.')
+    parser.add_argument("-f", "--stats_file", default='passenger_statistics', help='string to append to episode reward and passenger statistic filenames.')
+    parser.add_argument("-s", "--use_seed", action='store_true', help='use seed from config file for random number generation if true')
     parsed_args = parser.parse_args()
     config_file = parsed_args.config
     args = parse_config(config_file)
+    args['write_files'] = True
     if parsed_args.testing:
+        print('testing -- not writing files')
         args['use_q_file'] = False
-    if parsed_args.num_episodes:
-        args['num_episodes'] = parsed_args.num_episodes
+        args['write_files'] = False
     args['verbose'] = parsed_args.verbose
+    args['stats_file']  = parsed_args.stats_file
+    args['use_seed'] = parsed_args.use_seed
     sim = Simulator(**args)
     if args['is_training'] and isinstance(sim.environment.elevators[0].controller, learningAgents.ReinforcementAgent):
         num_episodes = (sim.environment.elevators[0].controller.num_training -
                         sim.environment.elevators[0].controller.episodes_so_far)
-    else:
+    elif not args['is_training']:
         num_episodes = args['num_testing_episodes']
+    if parsed_args.num_episodes:
+        num_episodes = parsed_args.num_episodes
     
     print('running for {} episodes'.format(num_episodes))
     for i in range(num_episodes):

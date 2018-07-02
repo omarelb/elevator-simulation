@@ -40,16 +40,22 @@ cdef class Environment:
     num_elevators : int
         number of elevators in the building
     floors : list
-        floor i can be accessed by floors[i], where ground floor is floor[0].
+        floor i can be accessed by floors[i], where ground floor is floor[0]
     elevators : list
         elevator i can be accessed by elevators[i]
     last_accumulator_event_time :
         time when a passenger arrival, passenger transfer or elevator control event occurred.
-        necessary for updating accumulated costs for reinforcement agents.
+        necessary for updating accumulated costs for reinforcement agents
+    passenger_times : list
+        contains waiting time for all passengers who have exited the system as tuples
+    write_files : bool
+        indicates whether existing files should be overwritten or updated. set to false when
+        testing flag --testing is true
     """
     cdef public int num_floors, num_elevators
     cdef public float last_accumulator_event_time
     cdef public object floors, elevators, passenger_times, traffic_profile
+    cdef public bint write_files
 
     def __init__(self, int num_floors=5, int num_elevators=1, object traffic_profile='DownPeak',
                  float interfloor=0.1, **args):
@@ -64,6 +70,7 @@ cdef class Environment:
         self.elevators = [ElevatorState(environment=self, index=i, **args) for i in range(self.num_elevators)]
         self.last_accumulator_event_time = 0
         self.passenger_times = []
+        self.write_files = args['write_files']
 
     def start_episode(self, object simulator):
         """
@@ -314,8 +321,10 @@ cdef class Environment:
             if stop_target in elevator_state.car_calls():
                 return (ElevatorState.STOP,)
             # no passenger wants to get on or off next floor -> force continue
+            # ADJUSTED: SEE WHAT HAPPENS WHEN REMOVING THIS CONSTRAINT
             if (not elevator_state.is_passenger_next_floor(self.floors, amount=amount) or
                     elevator_state.is_full()):
+                # if elevator_state.is_full():
                 return (ElevatorState.CONTINUE,)
 
             return (ElevatorState.STOP, ElevatorState.CONTINUE)
@@ -379,25 +388,35 @@ cdef class Environment:
                 # controller is not a reinforcement agent
                 pass
 
-    # def is_terminal(self):
-    #     """
-    #       Has the enviornment entered a terminal
-    #       state? This means there are no successors
-    #     """
-    #     state = self.get_current_state()
-    #     actions = self.get_possible_actions(state)
-    #     return len(actions) == 0
-
-    def stop_episode(self):
+    def stop_episode(self, simulator):
         """
         Handle everything that needs to be handled to end the episode.
+
+        Parameters
+        ----------
+        simulator
         """
         for elevator in self.elevators:
+            elevator.controller.episodes_so_far += 1
             try:
-                elevator.controller.final(self.passenger_times)
+                elevator.controller.final(self.write_files, simulator)
+                append_name = 'train' if elevator.controller.is_training else 'test'
+                num_training = elevator.controller.num_training
             except AttributeError:
                 # not a reinforcement agent
-                pass
+                append_name = 'heuristic'
+                num_training = 0
+        passenger_datafile = join(simulator.data_dir, '{}_{}_{}.csv'.format(simulator.stats_file, append_name, num_training))
+        if self.write_files:
+            with open(passenger_datafile, 'a') as f:
+                # if not os.path.isfile(passenger_datafile):
+                #     f.write('episode,waiting_time,boarding_time,system_time,threshold\r\n')
+                avg_waiting = sum([x[0] for x in self.passenger_times]) / len(self.passenger_times)
+                avg_boarding = sum([x[1] for x in self.passenger_times]) / len(self.passenger_times)
+                avg_system = sum([x[2] for x in self.passenger_times]) / len(self.passenger_times)
+                avg_threshold = sum([x[3] for x in self.passenger_times]) / len(self.passenger_times)
+                csv_writer = csv.writer(f)
+                csv_writer.writerow((self.elevators[0].controller.episodes_so_far, avg_waiting, avg_boarding, avg_system, avg_threshold))
 
     def __str__(self):
         res = 'elevator positions - '
@@ -471,9 +490,11 @@ class ElevatorState(object):
         self.id = index
         self.environment = environment
         if controller == 'BestFirstAgent':
-            self.controller = BestFirstAgent(self.id)
+            self.controller = BestFirstAgent(index=self.id, **args)
         elif controller == 'ElevatorQAgent':
-            self.controller = ElevatorQAgent(id=self.id, **args)
+            self.controller = ElevatorQAgent(index=self.id, **args)
+        elif controller == 'RandomAgent':
+            self.controller = RandomAgent(index=self.id, **args)
         self._floor = floor
         self.direction = direction if direction else ElevatorState.STOPPED
         self._current_action = current_action if current_action else ElevatorState.NO_ACTION

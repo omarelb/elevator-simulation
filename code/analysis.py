@@ -13,7 +13,7 @@ from os.path import join
 
 DATA_DIR = 'data'
 
-DATA_FILE = join(DATA_DIR, 'episode_rewards_train_2116.csv')
+DATA_FILE = join(DATA_DIR, 'episode_rewards_train_15198.csv')
 # dtypes = {'episode': int, 'waiting_time': np.float32, 'boarding_time': np.float32}
 # passengers = pd.read_csv(DATA_FILE, dtype=dtypes, sep=',', low_memory=True)
 # passengers = pd.read_csv(DATA_FILE, dtype=dtypes)
